@@ -7,6 +7,7 @@ from mayavi.core.api import PipelineBase
 from mayavi.core.ui.api import MayaviScene, SceneEditor, MlabSceneModel
 
 from mayavi import mlab
+from tvtk.api import tvtk
 
 class ArrayView4D(HasTraits):
     low = Int(0)
@@ -38,7 +39,7 @@ class ArrayView4D(HasTraits):
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 Group('zindex', 'tindex'), resizable=True)
 
-class ArrayViewTriIPWs(HasTraits):
+class ArrayViewTriIPW(HasTraits):
     low = Int(0)
     tlength = Property(depends_on=['arr'])
     zlength = Property(depends_on=['arr'])
@@ -87,27 +88,34 @@ class ArrayViewTriIPWs(HasTraits):
         arr_max = max(xt.max(),yt.max(),zt.max())
 
         if self.plotXY is None:
-            x,y = np.ogrid[:arr.shape[2],:arr.shape[3]]
-            s = self.scene.mlab.pipeline.array2d_source(x,y,zt)
-            self.plotXY = self.scene.mlab.pipeline.image_actor(s,interpolate=False, colormap='gray', vmin=arr.min(), vmax=arr.max())
-            
             zscale=2.6
-            x,y = np.ogrid[ arr.shape[2]+buffer : arr.shape[2]+buffer+zscale*arr.shape[1] : zscale  ,  :arr.shape[3] ] # right
-            #x,y = np.ogrid[ -zscale*arr.shape[1]-buffer:1-buffer:zscale  ,  :arr.shape[3] ] # left
-            s = self.scene.mlab.pipeline.array2d_source(x,y,yt)
-            self.plotXZ = self.scene.mlab.pipeline.image_actor(s,interpolate=False, colormap='gray', vmin=arr.min(), vmax=arr.max())
             
-            x,y = np.ogrid[ :arr.shape[2]  ,  arr.shape[3]+buffer : arr.shape[3]+buffer+zscale*arr.shape[1] : zscale ] # top
-            #x,y = np.ogrid[ :arr.shape[2]  ,  -zscale*arr.shape[1]-buffer:1-buffer:zscale ] # bottom
-            s = self.scene.mlab.pipeline.array2d_source(x,y,xt)
-            self.plotYZ = self.scene.mlab.pipeline.image_actor(s,interpolate=False, colormap='gray', vmin=arr.min(), vmax=arr.max())
+            #x,y = np.ogrid[:arr.shape[2],:arr.shape[3]]
+            #sXY = self.scene.mlab.pipeline.array2d_source(x,y,zt)
+            #x,y = np.ogrid[ arr.shape[2]+buffer : arr.shape[2]+buffer+zscale*arr.shape[1] : zscale  ,  :arr.shape[3] ] # right
+            ##x,y = np.ogrid[ -zscale*arr.shape[1]-buffer:1-buffer:zscale  ,  :arr.shape[3] ] # left
+            #sXZ = self.scene.mlab.pipeline.array2d_source(x,y,yt)
+            #x,y = np.ogrid[ :arr.shape[2]  ,  arr.shape[3]+buffer : arr.shape[3]+buffer+zscale*arr.shape[1] : zscale ] # top
+            ##x,y = np.ogrid[ :arr.shape[2]  ,  -zscale*arr.shape[1]-buffer:1-buffer:zscale ] # bottom
+            #sYZ = self.scene.mlab.pipeline.array2d_source(x,y,xt)
             
-            #x,y,z = np.mgrid[10*i:10+10*i:len()*1j,10*i:10+10*i:0.5,0:0.5:0.5]
-            #arr = testArrays.ab2D[:20,:20,None]
-            #s = mayavi.tools.pipeline.scalar_field(x,y,z,arr)
-            #ia = mayavi.mlab.pipeline.image_plane_widget(s,plane_orientation='z_axes')
+            x,y,z = np.mgrid[:arr.shape[2],:arr.shape[3],:1]
+            sXY = self.scene.mlab.pipeline.scalar_field(x,y,z,zt[:,:,None])
+            x,y,z = np.mgrid[ arr.shape[2]+buffer : arr.shape[2]+buffer+zscale*arr.shape[1] : zscale  ,  :arr.shape[3] , :1 ] # right
+            #x,y,z = np.ogrid[ -zscale*arr.shape[1]-buffer:1-buffer:zscale  ,  :arr.shape[3] , :1 ] # left
+            sXZ = self.scene.mlab.pipeline.scalar_field(x,y,z,yt[:,:,None])
+            x,y,z = np.mgrid[ :arr.shape[2]  ,  arr.shape[3]+buffer : arr.shape[3]+buffer+zscale*arr.shape[1] : zscale , :1 ] # top
+            #x,y,z = np.ogrid[ :arr.shape[2]  ,  -zscale*arr.shape[1]-buffer:1-buffer:zscale , :1 ] # bottom
+            sYZ = self.scene.mlab.pipeline.scalar_field(x,y,z,xt[:,:,None])
+                
+            for (s,pl) in [ (sXY,'plotXY') , (sXZ,'plotXZ') , (sYZ,'plotYZ')]:
+                #setattr( self, pl, self.scene.mlab.pipeline.image_actor(s,interpolate=False, colormap='gray', vmin=arr.min(), vmax=arr.max()) )
+                setattr( self, pl, self.scene.mlab.pipeline.image_plane_widget(s,plane_orientation='z_axes', colormap='gray', vmin=arr.min(), vmax=arr.max()) )
             
-            #self.plot = self.scene.mlab.imshow( arrExp, colormap='gray', vmin=arr.min(), vmax=arr.max())
+            for pl in [self.plotXY,self.plotXZ,self.plotYZ]:
+                pl.ipw.left_button_action = 0
+                
+            #self.scene.scene.interactor.interactor_style = tvtk.InteractorStyleImage()
         else:
             self.plotXY.mlab_source.scalars=zt
             self.plotXZ.mlab_source.scalars=yt
@@ -116,17 +124,6 @@ class ArrayViewTriIPWs(HasTraits):
     # The layout of the dialog created
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 Group('xindex','yindex','zindex', 'tindex'), resizable=True)
-
-    
-    #import np,mayavi,testArrays
-    #import mayavi.mlab
-    #mayavi.mlab.clf()
-    #iaList=[]
-    #for i in range(4):
-    #    x,y,z = np.mgrid[10*i:10+10*i:0.5,10*i:10+10*i:0.5,0:0.5:0.5]
-    #    arr = testArrays.ab2D[:20,:20,None]
-    #    s = mayavi.tools.pipeline.scalar_field(x,y,z,arr)
-    #    ia = mayavi.mlab.pipeline.image_plane_widget(s,plane_orientation='z_axes')
 
 class ArrayView4DTriBlob(HasTraits):
     low = Int(0)
@@ -256,6 +253,6 @@ if __name__=='__main__':
     arr2 = GTL.LoadMonolithic('/home/mashbudn/Documents/VIIBRE--ScarHealing/ActiveData/Resille/2012-04-11/1/Riselle_t2.TIF')
     arr3 = GTL.LoadMonolithic('/home/mashbudn/Documents/VIIBRE--ScarHealing/ActiveData/Resille/2012-04-11/1/Riselle_t3.TIF')
     
-    a = ArrayViewTriIPWs(arr=np.array([arr1,arr2,arr3]))
+    a = ArrayViewTriIPW(arr=np.array([arr1,arr2,arr3]))
     a.update_plot()
     a.configure_traits()
