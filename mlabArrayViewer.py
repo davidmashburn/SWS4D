@@ -9,7 +9,7 @@ from mayavi.core.ui.api import MayaviScene, SceneEditor, MlabSceneModel
 from mayavi import mlab
 from tvtk.api import tvtk
 
-class ArrayViewTriIPW(HasTraits):
+class ArrayView4D(HasTraits):
     low = Int(0)
     tlength = Property(depends_on=['arr'])
     zlength = Property(depends_on=['arr'])
@@ -150,14 +150,14 @@ if __name__=='__main__':
     import testArrays
     arr = testArrays.abb3D
     import GifTiffLoader as GTL
-    numLoad=15
-    #name = '/media/home/ViibreData/ActiveData/NewSegmentation/AS Edge Wound Healing/2009SEPT24CellCycle05_W2X/','','2009SEPT24Cell_Cycle05_2X20s.tif'
-    name = '/home/mashbudn/Documents/VIIBRE--ScarHealing/ActiveData/Resille/2012-04-11/1/Riselle_t','1','.TIF'
+    numLoad=1
+    name = '/media/home/ViibreData/ActiveData/NewSegmentation/AS Edge Wound Healing/2009SEPT24CellCycle05_W2X/','','2009SEPT24Cell_Cycle05_2X20s.tif'
+    #name = '/home/mashbudn/Documents/VIIBRE--ScarHealing/ActiveData/Resille/2012-04-11/1/Riselle_t','1','.TIF'
     arr0 = GTL.LoadMonolithic(''.join(name))
     arr = np.zeros([numLoad]+list(arr0.shape),dtype=arr0.dtype)
     arr[0] = arr0
     for i in range(1,numLoad):
         arr[i]= GTL.LoadMonolithic(name[0]+str(i+1)+name[2])
     
-    a = ArrayViewTriIPW(arr=arr)
+    a = ArrayView4D(arr=arr)
     a.configure_traits()
