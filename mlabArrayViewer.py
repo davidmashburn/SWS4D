@@ -32,12 +32,18 @@ class ArrayView4D(HasTraits):
     flip = Bool(False)
     
     arr = Array(shape=[None]*4)
+    arr2 = Array(shape=[None]*4)
     
     scene = Instance(MlabSceneModel, ())
+    scene2 = Instance(MlabSceneModel, ())
     
     plotXY = Instance(PipelineBase)
     plotXZ = Instance(PipelineBase)
     plotYZ = Instance(PipelineBase)
+    
+    plotXY2 = Instance(PipelineBase)
+    plotXZ2 = Instance(PipelineBase)
+    plotYZ2 = Instance(PipelineBase)
     
     # The layout of the dialog created
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
@@ -45,19 +51,17 @@ class ArrayView4D(HasTraits):
     
     def __init__(self,arr,arr2=None,cursorSize=2,**traits):
         if arr2==None:
-            HasTraits.__init__(self,arr=arr,**traits) # Call __init__ on the super
+            super(self.__class__,self).__init__(arr=arr,**traits) # Call __init__ on the super
         else:
-            HasTraits.__init__(self,arr=arr,arr2=arr2,**traits) # Call __init__ on the super
+            super(self.__class__,self).__init__(arr=arr,arr2=arr2,**traits) # Call __init__ on the super
             self.cursors2 = {'x':None, 'y':None, 'zx':None, 'zy':None}
         self.cursors = {'x':None, 'y':None, 'zx':None, 'zy':None}        
         self.cursorSize = cursorSize
-        
-    @on_trait_change('scene.activated')
-    def display_scene(self):
-        
-        scene = self.scene
-        arr=self.arr
-        number = ''
+    
+    def display_scene_helper(self,arr,scene,cursors,number=''): # Number is either nothing or '2'
+        if number not in ['','2']:
+            print "Number must be '' or '2'"
+            return
         # Interaction properties can only be changed after the scene
         # has been created, and thus the interactor exists
         #self.scene.scene.background = (0, 0, 0)
@@ -117,23 +121,42 @@ class ArrayView4D(HasTraits):
         cursors['zx'] = quickLine( (self.zindex-zs)*zsc - plotbuf, [0,xs] )
         cursors['zy'] = quickLine( [0,ys], plotbuf+xs+self.zindex*zsc )
     
+    @on_trait_change('scene.activated')
+    def display_scene(self):
+        print 'Scene activated!'
+        self.display_scene_helper(self.arr,self.scene,self.cursors)
+    @on_trait_change('scene2.activated')
+    def display_scene(self):
+        self.display_scene_helper(self.arr,self.scene,self.cursors,number='2')
     @on_trait_change('tindex')
     def update_all_plots(self):
+        print 't moved'
         if self.plotXY is not None:
             self.plotXY.mlab_source.scalars = self.arr[self.tindex,self.zindex]
             self.plotXZ.mlab_source.scalars = self.arr[self.tindex,:,self.yindex,:]
             self.plotYZ.mlab_source.scalars = self.arr[self.tindex,:,:,self.xindex].T
+        if self.plotXY2 is not None:
+            self.plotXY2.mlab_source.scalars = self.arr2[self.tindex,self.zindex]
+            self.plotXZ2.mlab_source.scalars = self.arr2[self.tindex,:,self.yindex,:]
+            self.plotYZ2.mlab_source.scalars = self.arr2[self.tindex,:,:,self.xindex].T
     
     @on_trait_change('xindex')
     def update_x_plots(self):
+        print 'z moved'
         if self.plotXY is not None:
             self.plotYZ.mlab_source.scalars = self.arr[self.tindex,:,:,self.xindex].T
             self.cursors['x'].mlab_source.set( y=[self.xindex]*2 )
+        if self.plotXY2 is not None:
+            self.plotYZ2.mlab_source.scalars = self.arr2[self.tindex,:,:,self.xindex].T
+            self.cursors2['x'].mlab_source.set( y=[self.xindex]*2 )
     @on_trait_change('yindex')
     def update_y_plots(self):
         if self.plotXY is not None:
             self.plotXZ.mlab_source.scalars = self.arr[self.tindex,:,self.yindex,:]
             self.cursors['y'].mlab_source.set( x=[self.yindex]*2 )
+        if self.plotXY2 is not None:
+            self.plotXZ2.mlab_source.scalars = self.arr[self.tindex,:,self.yindex,:]
+            self.cursors2['y'].mlab_source.set( x=[self.yindex]*2 )
     @on_trait_change('zindex')
     def update_z_plots(self):
         xs,ys,zs = self.arr.shape[3],self.arr.shape[2],self.arr.shape[1]
@@ -142,6 +165,21 @@ class ArrayView4D(HasTraits):
             self.plotXY.mlab_source.scalars = self.arr[self.tindex,self.zindex]
             self.cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
             self.cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
+        if self.plotXY2 is not None:
+            self.plotXY2.mlab_source.scalars = self.arr2[self.tindex,self.zindex]
+            self.cursors2['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
+            self.cursors2['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
+
+class ArrayView4DDual(ArrayView4D):
+    # The layout of the dialog created
+    view = View(HGroup(
+                    Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
+                    Item('scene2', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
+                ),
+                Group('xindex','yindex','zindex', 'tindex'), resizable=True)
+    def __init__(self,arr,arr2,cursorSize=2,**traits):
+        super(self.__class__,self).__init__(arr=arr,arr2=arr2,**traits) # Call __init__ on the super
+    
 
 if __name__=='__main__':
     arr = np.array([ [[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[1,2,3,4],[5,6,7,8],[9,10,11,12]]], [[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[1,2,3,4],[5,6,7,8],[9,10,11,12]]] ])
