@@ -25,10 +25,10 @@ class ArrayView4D(HasTraits):
     def _get_xlength(self):
         return self.arr.shape[3]-1
 
-    tindex = Range(low='low', high='tlength', value=1, exclude_high=False, mode='slider') # or spinner
-    zindex = Range(low='low', high='zlength', value=1, exclude_high=False, mode='slider')
-    yindex = Range(low='low', high='ylength', value=20, exclude_high=False, mode='slider')
-    xindex = Range(low='low', high='xlength', value=100, exclude_high=False, mode='slider')
+    tindex = Range(low='low', high='tlength', value=0, exclude_high=False, mode='slider') # or spinner
+    zindex = Range(low='low', high='zlength', value=0, exclude_high=False, mode='slider')
+    xindex = Range(low='low', high='ylength', value=0, exclude_high=False, mode='slider')
+    yindex = Range(low='low', high='xlength', value=0, exclude_high=False, mode='slider')
     flip = Bool(False)
     
     arr = Array(shape=[None]*4)
@@ -39,10 +39,10 @@ class ArrayView4D(HasTraits):
     plotXZ = Instance(PipelineBase)
     plotYZ = Instance(PipelineBase)
     
-    # Completely unnecessary
-    def __init__(self,arr,**traits):
+    def __init__(self,arr,cursorSize=3,**traits):
         super(self.__class__,self).__init__(arr=arr.transpose(0,1,3,2)[:,:,:,::-1],**traits) # Call __init__ on the super
-    
+        self.cursorSize = cursorSize
+        
     @on_trait_change('scene.activated')
     def display_scene(self):
         # Interaction properties can only be changed after the scene
@@ -50,9 +50,13 @@ class ArrayView4D(HasTraits):
         #self.scene.scene.background = (0, 0, 0)
         self.scene.scene.interactor.interactor_style = tvtk.InteractorStyleImage()
         #self.scene.scene.parallel_projection = True
-        # self.scene3d.mlab.view(40, 50)
+        self.scene.mlab.view(90, 0)
         
-        print self.xindex, self.yindex,self.zindex, self.tindex
+        print self.yindex, self.xindex,self.zindex, self.tindex
+        
+        xs,ys,zs = self.arr.shape[3], self.arr.shape[2], self.arr.shape[1]
+        
+        xindex,yindex,zindex,tindex = self.xindex,(xs-1-self.yindex),self.zindex, self.tindex
         
         if not hasattr(self,'min'):
             self.min = self.arr.min()
@@ -61,11 +65,10 @@ class ArrayView4D(HasTraits):
         self.plotBuffer = plotbuf = 10
         self.zscale = zsc = 2.6
         
-        xs,ys,zs = self.arr.shape[3], self.arr.shape[2], self.arr.shape[1]
         
-        xt = self.arr[self.tindex,:,:,self.xindex].T
-        yt = self.arr[self.tindex,:,self.yindex]
-        zt = self.arr[self.tindex,self.zindex]
+        xt = self.arr[self.tindex,:,:,yindex].T
+        yt = self.arr[self.tindex,:,xindex]
+        zt = self.arr[self.tindex,zindex]
         
         # Make simple image actors instead of image plane widgets
         #x,y = np.ogrid[:ys,:xs]
@@ -105,10 +108,10 @@ class ArrayView4D(HasTraits):
                 y = [y,y]
             
             print x,y
-            return self.scene.mlab.plot3d( x, y, [0,0], [0,0], color=(0, 0, 0), tube_radius=3 )
+            return self.scene.mlab.plot3d( x, y, [0,0], [0,0], color=(0, 0, 0), tube_radius=self.cursorSize )
         
-        self.cursor_y  = quickLine( self.yindex, [0,plotbuf+xs+zs*zsc] )
-        self.cursor_x  = quickLine( [0,plotbuf+ys+zs*zsc], self.xindex )
+        self.cursor_y  = quickLine( self.xindex, [0,plotbuf+xs+zs*zsc] )
+        self.cursor_x  = quickLine( [0,plotbuf+ys+zs*zsc], yindex )
         
         self.cursor_zy = quickLine( [0,ys], plotbuf+xs+self.zindex*zsc )
         self.cursor_zx = quickLine( plotbuf+ys+self.zindex*zsc, [0,xs] )
@@ -117,19 +120,20 @@ class ArrayView4D(HasTraits):
     def update_all_plots(self):
         if self.plotXY is not None:
             self.plotXY.mlab_source.scalars = self.arr[self.tindex,self.zindex]
-            self.plotXZ.mlab_source.scalars = self.arr[self.tindex,:,self.yindex,:]
-            self.plotYZ.mlab_source.scalars = self.arr[self.tindex,:,:,self.xindex].T
+            self.plotXZ.mlab_source.scalars = self.arr[self.tindex,:,self.xindex,:]
+            self.plotYZ.mlab_source.scalars = self.arr[self.tindex,:,:,self.arr.shape[3]-1 - self.yindex].T
     
-    @on_trait_change('xindex')
+    @on_trait_change('yindex')
     def update_x_plots(self):
         if self.plotXY is not None:
-            self.plotYZ.mlab_source.scalars = self.arr[self.tindex,:,:,self.xindex].T
-            self.cursor_x.mlab_source.set( y=[self.xindex]*2 )
-    @on_trait_change('yindex')
+            yindex = self.arr.shape[3]-1 - self.yindex
+            self.plotYZ.mlab_source.scalars = self.arr[self.tindex,:,:,yindex].T
+            self.cursor_x.mlab_source.set( y=[yindex]*2 )
+    @on_trait_change('xindex')
     def update_y_plots(self):
         if self.plotXY is not None:
-            self.plotXZ.mlab_source.scalars = self.arr[self.tindex,:,self.yindex,:]
-            self.cursor_y.mlab_source.set( x=[self.yindex]*2 )
+            self.plotXZ.mlab_source.scalars = self.arr[self.tindex,:,self.xindex,:]
+            self.cursor_y.mlab_source.set( x=[self.xindex]*2 )
     @on_trait_change('zindex')
     def update_z_plots(self):
         if self.plotXY is not None:
