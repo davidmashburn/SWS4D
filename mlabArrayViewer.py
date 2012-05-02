@@ -51,9 +51,9 @@ class ArrayView4D(HasTraits):
     
     def __init__(self,arr,arr2=None,cursorSize=2,**traits):
         if arr2==None:
-            super(self.__class__,self).__init__(arr=arr,**traits) # Call __init__ on the super
+            HasTraits.__init__(self,arr=arr,**traits) # Call __init__ on the super
         else:
-            super(self.__class__,self).__init__(arr=arr,arr2=arr2,**traits) # Call __init__ on the super
+            HasTraits.__init__(self,arr=arr,arr2=arr2,**traits) # Call __init__ on the super
             self.cursors2 = {'x':None, 'y':None, 'zx':None, 'zy':None}
         self.cursors = {'x':None, 'y':None, 'zx':None, 'zy':None}        
         self.cursorSize = cursorSize
@@ -126,11 +126,10 @@ class ArrayView4D(HasTraits):
         print 'Scene activated!'
         self.display_scene_helper(self.arr,self.scene,self.cursors)
     @on_trait_change('scene2.activated')
-    def display_scene(self):
-        self.display_scene_helper(self.arr,self.scene,self.cursors,number='2')
+    def display_scene2(self):
+        self.display_scene_helper(self.arr2,self.scene2,self.cursors2,number='2')
     @on_trait_change('tindex')
     def update_all_plots(self):
-        print 't moved'
         if self.plotXY is not None:
             self.plotXY.mlab_source.scalars = self.arr[self.tindex,self.zindex]
             self.plotXZ.mlab_source.scalars = self.arr[self.tindex,:,self.yindex,:]
@@ -139,10 +138,8 @@ class ArrayView4D(HasTraits):
             self.plotXY2.mlab_source.scalars = self.arr2[self.tindex,self.zindex]
             self.plotXZ2.mlab_source.scalars = self.arr2[self.tindex,:,self.yindex,:]
             self.plotYZ2.mlab_source.scalars = self.arr2[self.tindex,:,:,self.xindex].T
-    
     @on_trait_change('xindex')
     def update_x_plots(self):
-        print 'z moved'
         if self.plotXY is not None:
             self.plotYZ.mlab_source.scalars = self.arr[self.tindex,:,:,self.xindex].T
             self.cursors['x'].mlab_source.set( y=[self.xindex]*2 )
@@ -155,7 +152,7 @@ class ArrayView4D(HasTraits):
             self.plotXZ.mlab_source.scalars = self.arr[self.tindex,:,self.yindex,:]
             self.cursors['y'].mlab_source.set( x=[self.yindex]*2 )
         if self.plotXY2 is not None:
-            self.plotXZ2.mlab_source.scalars = self.arr[self.tindex,:,self.yindex,:]
+            self.plotXZ2.mlab_source.scalars = self.arr2[self.tindex,:,self.yindex,:]
             self.cursors2['y'].mlab_source.set( x=[self.yindex]*2 )
     @on_trait_change('zindex')
     def update_z_plots(self):
@@ -172,14 +169,13 @@ class ArrayView4D(HasTraits):
 
 class ArrayView4DDual(ArrayView4D):
     # The layout of the dialog created
-    view = View(HGroup(
+    view = View(VGroup(HGroup(
                     Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                     Item('scene2', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 ),
-                Group('xindex','yindex','zindex', 'tindex'), resizable=True)
+                Group('xindex','yindex','zindex', 'tindex')), resizable=True)
     def __init__(self,arr,arr2,cursorSize=2,**traits):
-        super(self.__class__,self).__init__(arr=arr,arr2=arr2,**traits) # Call __init__ on the super
-    
+        ArrayView4D.__init__(self,arr=arr,arr2=arr2,**traits) # Call __init__ on the super
 
 if __name__=='__main__':
     arr = np.array([ [[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[1,2,3,4],[5,6,7,8],[9,10,11,12]]], [[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[1,2,3,4],[5,6,7,8],[9,10,11,12]]] ])
@@ -198,5 +194,5 @@ if __name__=='__main__':
     for i in range(1,numLoad):
         arr[i]= GTL.LoadMonolithic(name[0]+str(i+1)+name[2])
     
-    a = ArrayView4D(arr=arr)
+    a = ArrayView4DDual(arr=arr,arr2=np.array(arr)*-1)
     a.configure_traits()
