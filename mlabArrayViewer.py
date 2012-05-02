@@ -39,6 +39,10 @@ class ArrayView4D(HasTraits):
     plotXZ = Instance(PipelineBase)
     plotYZ = Instance(PipelineBase)
     
+    # The layout of the dialog created
+    view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
+                Group('xindex','yindex','zindex', 'tindex'), resizable=True)
+    
     def __init__(self,arr,cursorSize=3,**traits):
         super(self.__class__,self).__init__(arr=arr.transpose(0,1,2,3),**traits) # Call __init__ on the super [:,:,:,::-1]
         self.cursorSize = cursorSize
@@ -49,7 +53,7 @@ class ArrayView4D(HasTraits):
         # has been created, and thus the interactor exists
         #self.scene.scene.background = (0, 0, 0)
         #self.scene.scene.interactor.interactor_style = tvtk.InteractorStyleImage()
-        #self.scene.scene.parallel_projection = True
+        self.scene.scene.parallel_projection = True
         self.scene.mlab.view(-90, 180)  # Secret sauce to make it line up with the standard imagej orientation
         
         print self.yindex, self.xindex,self.zindex, self.tindex
@@ -69,24 +73,24 @@ class ArrayView4D(HasTraits):
         yt = self.arr[self.tindex,:,self.yindex]
         zt = self.arr[self.tindex,self.zindex]
         
-        # Make simple image actors instead of image plane widgets
-        #x,y = np.ogrid[:ys,:xs]
-        #sXY = self.scene.mlab.pipeline.array2d_source(x,y,zt)
+        x,y = np.ogrid[:ys,:xs]
+        sXY = self.scene.mlab.pipeline.array2d_source(x,y,zt)
         #x,y = np.ogrid[ ys+plotbuf : ys+plotbuf+zsc*zs : zsc  ,  :xs ] # right
-        ##x,y = np.ogrid[ -zsc*zs-plotbuf:1-plotbuf:zsc  ,  :xs ] # left
-        #sXZ = self.scene.mlab.pipeline.array2d_source(x,y,yt)
-        #x,y = np.ogrid[ :ys  ,  xs+plotbuf : xs+plotbuf+zsc*zs : zsc ] # top
-        ##x,y = np.ogrid[ :ys  ,  -zsc*zs-plotbuf : 1-plotbuf : zsc ] # bottom
-        #sYZ = self.scene.mlab.pipeline.array2d_source(x,y,xt)
+        x,y = np.ogrid[ 1-zsc*zs-plotbuf:1-plotbuf:zsc  ,  :xs ] # left
+        sXZ = self.scene.mlab.pipeline.array2d_source(x,y,yt)
+        x,y = np.ogrid[ :ys  ,  xs+plotbuf : xs+plotbuf+zsc*zs : zsc ] # top
+        #x,y = np.ogrid[ :ys  ,  -zsc*zs-plotbuf : 1-plotbuf : zsc ] # bottom
+        sYZ = self.scene.mlab.pipeline.array2d_source(x,y,xt)
         
-        x,y,z = np.mgrid[:ys,:xs,:1]
-        sXY = self.scene.mlab.pipeline.scalar_field(x,y,z,zt[:,:,None])
-        #x,y,z = np.mgrid[ ys+plotbuf : ys+plotbuf+zs*zsc : zsc  ,  :xs , :1 ] # right
-        x,y,z = np.mgrid[ 1-zsc*zs-plotbuf : 1-plotbuf : zsc  ,  :xs , :1 ] # left
-        sXZ = self.scene.mlab.pipeline.scalar_field(x,y,z,yt[:,:,None])
-        x,y,z = np.mgrid[ :ys  ,  xs+plotbuf : xs+plotbuf+zsc*zs : zsc , :1 ] # top
-        #x,y,z = np.mgrid[ :ys  ,  1-zsc*zs-plotbuf:1-plotbuf:zsc , :1 ] # bottom
-        sYZ = self.scene.mlab.pipeline.scalar_field(x,y,z,xt[:,:,None])
+        # This really doesn't gain me anything...
+        #x,y,z = np.mgrid[:ys,:xs,:1]
+        #sXY = self.scene.mlab.pipeline.scalar_field(x,y,z,zt[:,:,None])
+        ##x,y,z = np.mgrid[ ys+plotbuf : ys+plotbuf+zs*zsc : zsc  ,  :xs , :1 ] # right
+        #x,y,z = np.mgrid[ 1-zsc*zs-plotbuf : 1-plotbuf : zsc  ,  :xs , :1 ] # left
+        #sXZ = self.scene.mlab.pipeline.scalar_field(x,y,z,yt[:,:,None])
+        #x,y,z = np.mgrid[ :ys  ,  xs+plotbuf : xs+plotbuf+zsc*zs : zsc , :1 ] # top
+        ##x,y,z = np.mgrid[ :ys  ,  1-zsc*zs-plotbuf:1-plotbuf:zsc , :1 ] # bottom
+        #sYZ = self.scene.mlab.pipeline.scalar_field(x,y,z,xt[:,:,None])
         
         for (s,pl) in [ (sXY,'plotXY') , (sXZ,'plotXZ') , (sYZ,'plotYZ')]:
             #setattr( self, pl, self.scene.mlab.pipeline.image_actor(s,interpolate=False, colormap='gray', vmin=arr.min(), vmax=arr.max()) )
@@ -139,10 +143,6 @@ class ArrayView4D(HasTraits):
             self.plotXY.mlab_source.scalars = self.arr[self.tindex,self.zindex]
             self.cursor_zy.mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
             self.cursor_zx.mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
-    
-    # The layout of the dialog created
-    view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
-                Group('xindex','yindex','zindex', 'tindex'), resizable=True)
 
 if __name__=='__main__':
     arr = np.array([ [[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[1,2,3,4],[5,6,7,8],[9,10,11,12]]], [[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[1,2,3,4],[5,6,7,8],[9,10,11,12]]] ])
