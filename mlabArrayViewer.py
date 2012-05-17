@@ -11,11 +11,13 @@ from tvtk.api import tvtk
 
 class ArrayView4D(HasTraits):
     low = Int(0)
+    minI16 = Int(0)
+    maxI16 = Int(2**16)
     tlength = Property(depends_on=['arr'])
     zlength = Property(depends_on=['arr'])
     ylength = Property(depends_on=['arr'])
     xlength = Property(depends_on=['arr'])
-
+    
     def _get_tlength(self):
         return self.arr.shape[0]-1
     def _get_zlength(self):
@@ -29,6 +31,8 @@ class ArrayView4D(HasTraits):
     zindex = Range(low='low', high='zlength', value=0, exclude_high=False, mode='slider')
     yindex = Range(low='low', high='ylength', value=0, exclude_high=False, mode='slider')
     xindex = Range(low='low', high='xlength', value=0, exclude_high=False, mode='slider')
+    vmin = Range(low='minI16', high='maxI16', value=0, exclude_high=False, mode='slider')
+    vmax = Range(low='minI16', high='maxI16', value=0, exclude_high=False, mode='slider')
     flip = Bool(False)
     
     arr = Array(shape=[None]*4)
@@ -45,7 +49,7 @@ class ArrayView4D(HasTraits):
     
     # The layout of the dialog created
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
-                Group('xindex','yindex','zindex', 'tindex'), resizable=True)
+                Group('xindex','yindex','zindex', 'tindex', 'vmin', 'vmax'), resizable=True)
     
     def __init__(self,arr,arr2=None,cursorSize=2,**traits):
         if arr2==None:
@@ -56,7 +60,7 @@ class ArrayView4D(HasTraits):
         self.cursors = {'x':None, 'y':None, 'zx':None, 'zy':None}        
         self.cursorSize = cursorSize
     
-    def display_scene_helper(self,arr,scene,cursors,plots): # Number is either nothing or '2'
+    def display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=False):
         # Interaction properties can only be changed after the scene
         # has been created, and thus the interactor exists
         #self.scene.scene.background = (0, 0, 0)
@@ -69,6 +73,8 @@ class ArrayView4D(HasTraits):
         xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]
         
         arrMin,arrMax = arr.min(),arr.max()
+        if updateVminVmax:
+            self.vmin, self.vmax = arrMin, arrMax
         
         self.plotBuffer = plotbuf = 10
         self.zscale = zsc = 2.6
@@ -119,10 +125,17 @@ class ArrayView4D(HasTraits):
     @on_trait_change('scene.activated')
     def display_scene(self):
         print 'Scene activated!'
-        self.display_scene_helper(self.arr,self.scene,self.cursors,self.plots)
+        self.display_scene_helper(self.arr,self.scene,self.cursors,self.plots,updateVminVmax=True)
     @on_trait_change('scene2.activated')
     def display_scene2(self):
         self.display_scene_helper(self.arr2,self.scene2,self.cursors2,self.plots2)
+    @on_trait_change('vmin,vmax')
+    def UpdateVminVmax(self):
+        '''Update the 1st set of plots using the sliders'''
+        if 'XY' in self.plots:
+            self.plots['XY'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
+            self.plots['XZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
+            self.plots['YZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
     @on_trait_change('tindex')
     def update_all_plots(self):
         for i in range(2):
@@ -168,7 +181,7 @@ class ArrayView4DDual(ArrayView4D):
                     Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                     Item('scene2', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 ),
-                Group('xindex','yindex','zindex', 'tindex')), resizable=True)
+                Group('xindex','yindex','zindex', 'tindex', 'vmin', 'vmax')), resizable=True)
     def __init__(self,arr,arr2,cursorSize=2,**traits):
         ArrayView4D.__init__(self,arr=arr,arr2=arr2,cursorSize=cursorSize,**traits) # Call __init__ on the super
 
