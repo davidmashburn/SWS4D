@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import numpy as np
 
-from traits.api import HasTraits, Int, Range, Bool, Instance, Property, Array, List, Dict, Button, on_trait_change
+from traits.api import HasTraits, Int, Range, String, Bool, Instance, Property, Array, List, Dict, Button, on_trait_change, NO_COMPARE
 from traitsui.api import View, Item, Group, RangeEditor, VGroup, HGroup, VSplit, HSplit, NullEditor
 from mayavi.core.api import PipelineBase
 from mayavi.core.ui.api import MayaviScene, SceneEditor, MlabSceneModel
@@ -9,10 +9,30 @@ from mayavi.core.ui.api import MayaviScene, SceneEditor, MlabSceneModel
 from mayavi import mlab
 from tvtk.api import tvtk
 
+# Using the ipw widget interactions instead, remove this later?
+#def picker_callback(picker_obj):
+#    print picker_obj
+#    picked = picker_obj.actors
+#    if mesh.actor.actor._vtk_obj in [o._vtk_obj for o in picked]:
+#        # m.mlab_source.points is the points array underlying the vtk
+#        # dataset. GetPointId return the index in this array.
+#        x_, y_ = np.lib.index_tricks.unravel_index(picker_obj.point_id,
+#                                                                s.shape)
+#        print "Data indices: %i, %i" % (x_, y_)
+#        n_x, n_y = s.shape
+#        cursor.mlab_source.set(x=x_ - n_x/2.,
+#                               y=y_ - n_y/2.)
+#        cursor3d.mlab_source.set(x=x[x_, y_],
+#                                 y=y[x_, y_],
+#                                 z=z[x_, y_])
+
+# This class is the heart of the code; in fact, it contains 90% of what
+# is needed for ArrayView4DDual as well.
+
+mouseInteractionModes = ['print','add','erase','line','plane']
+
 class ArrayView4D(HasTraits):
     low = Int(0)
-    minI16 = Int(0)
-    maxI16 = Int(2**16)
     tlength = Property(depends_on=['arr'])
     zlength = Property(depends_on=['arr'])
     ylength = Property(depends_on=['arr'])
@@ -31,8 +51,6 @@ class ArrayView4D(HasTraits):
     zindex = Range(low='low', high='zlength', value=0, exclude_high=False, mode='slider')
     yindex = Range(low='low', high='ylength', value=0, exclude_high=False, mode='slider')
     xindex = Range(low='low', high='xlength', value=0, exclude_high=False, mode='slider')
-    vmin = Range(low='minI16', high='maxI16', value=0, exclude_high=False, mode='slider')
-    vmax = Range(low='minI16', high='maxI16', value=0, exclude_high=False, mode='slider')
     flip = Bool(False)
     
     arr = Array(shape=[None]*4)
@@ -47,62 +65,71 @@ class ArrayView4D(HasTraits):
     cursors = Dict()
     cursors2 = Dict()
     
-    # The layout of the dialog created
+    mouseInteraction = String(mouseInteractionModes[0])
+    
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
-                Group('xindex','yindex','zindex', 'tindex', 'vmin', 'vmax'), resizable=True)
+                Group('xindex','yindex','zindex', 'tindex'), resizable=True)
     
     def __init__(self,arr,arr2=None,cursorSize=2,**traits):
         if arr2==None:
-            HasTraits.__init__(self,arr=arr,**traits) # Call __init__ on the super
+            HasTraits.__init__(self,arr=arr,**traits)
         else:
-            HasTraits.__init__(self,arr=arr,arr2=arr2,**traits) # Call __init__ on the super
+            HasTraits.__init__(self,arr=arr,arr2=arr2,**traits)
             self.cursors2 = {'x':None, 'y':None, 'zx':None, 'zy':None}
         self.cursors = {'x':None, 'y':None, 'zx':None, 'zy':None}        
         self.cursorSize = cursorSize
-    
-    def display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=False):
+        
+    def display_scene_helper(self,arr,scene,cursors,plots,plotbuf=10,zsc=2.6):
         # Interaction properties can only be changed after the scene
         # has been created, and thus the interactor exists
         #self.scene.scene.background = (0, 0, 0)
+        
+        # Dumped in favor of ipw mouse stuff
+        #print 'On Mouse Pick'
+        #print self.scene.mayavi_scene._mouse_pick_dispatcher._active_pickers
+        #print self.scene.mayavi_scene.on_mouse_pick(picker_callback)
+        
         scene.scene.interactor.interactor_style = tvtk.InteractorStyleImage()
         scene.scene.parallel_projection = True
+        scene.scene.anti_aliasing_frames = 0
         scene.mlab.view(-90, 180)  # Secret sauce to make it line up with the standard imagej orientation
         
-        print self.xindex, self.yindex,self.zindex, self.tindex
-        
-        xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]
-        
+        xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]        
         arrMin,arrMax = arr.min(),arr.max()
-        if updateVminVmax:
-            self.vmin, self.vmax = arrMin, arrMax
-        
-        self.plotBuffer = plotbuf = 10
-        self.zscale = zsc = 2.6
+        self.plotBuffer = plotbuf
+        self.zscale = zsc
         
         xt = arr[self.tindex,:,:,self.xindex].T
         yt = arr[self.tindex,:,self.yindex]
         zt = arr[self.tindex,self.zindex]
         
+        # Make the 3 array_2d_scources in the pipeline; tell it not to compare
+        # so array self-copy will notify traits (see AddMouseInteraction)
         x,y = np.ogrid[:ys,:xs]
-        sXY = scene.mlab.pipeline.array2d_source(x,y,zt)
+        sXY = scene.mlab.pipeline.array2d_source(x,y,zt,comparison_mode=NO_COMPARE)
         #x,y = np.ogrid[ ys+plotbuf : ys+plotbuf+zsc*zs : zsc  ,  :xs ] # right
         x,y = np.ogrid[ 1-zsc*zs-plotbuf:1-plotbuf:zsc  ,  :xs ] # left
-        sXZ = scene.mlab.pipeline.array2d_source(x,y,yt)
+        sXZ = scene.mlab.pipeline.array2d_source(x,y,yt,comparison_mode=NO_COMPARE)
         x,y = np.ogrid[ :ys  ,  xs+plotbuf : xs+plotbuf+zsc*zs : zsc ] # top
         #x,y = np.ogrid[ :ys  ,  -zsc*zs-plotbuf : 1-plotbuf : zsc ] # bottom
-        sYZ = scene.mlab.pipeline.array2d_source(x,y,xt)
+        sYZ = scene.mlab.pipeline.array2d_source(x,y,xt,comparison_mode=NO_COMPARE)
         
         sList = [sXY,sXZ,sYZ]
         pList = ['XY','XZ','YZ']
-        pFunc = scene.mlab.pipeline.image_plane_widget #scene.mlab.pipeline.image_actor
+        pFunc = scene.mlab.pipeline.image_plane_widget
+        # legacy code in case of switch to image_actor instead of ipw
+        #pFunc = scene.mlab.pipeline.image_actor
         for i in range(3):
+            # legacy code in case of switch to image_actor instead of ipw
             #plots(pList[i]) = pFunc(sList[i],interpolate=False,
             #                        colormap='gray',vmin=arrMin,vmax=arrMax) )
             plots[pList[i]] = pFunc(sList[i],plane_orientation='z_axes',
                                     colormap='gray',vmin=arrMin,vmax=arrMax)
             plots[pList[i]].ipw.left_button_action = 0
-            
         
+        self.MakeCursors(arr,scene,cursors)
+    
+    def MakeCursors(self,arr,scene,cursors):
         def quickLine(x,y): # pass one list and one value
             xl,yl = hasattr(x,'__len__') , hasattr(y,'__len__')
             if (xl and yl) or ((not xl) and (not yl)):
@@ -117,6 +144,9 @@ class ArrayView4D(HasTraits):
             return scene.mlab.plot3d( x, y, [0,0], [0,0], color=(1, 0, 0),
                                        tube_radius=self.cursorSize )
         
+        xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]
+        plotbuf,zsc = self.plotBuffer,self.zscale
+        
         cursors['x']  = quickLine( [-plotbuf-zs*zsc,ys], self.xindex )
         cursors['y']  = quickLine( self.yindex, [0,plotbuf+xs+zs*zsc] )
         cursors['zx'] = quickLine( (self.zindex-zs)*zsc - plotbuf, [0,xs] )
@@ -125,17 +155,10 @@ class ArrayView4D(HasTraits):
     @on_trait_change('scene.activated')
     def display_scene(self):
         print 'Scene activated!'
-        self.display_scene_helper(self.arr,self.scene,self.cursors,self.plots,updateVminVmax=True)
+        self.display_scene_helper(self.arr,self.scene,self.cursors,self.plots)
     @on_trait_change('scene2.activated')
     def display_scene2(self):
         self.display_scene_helper(self.arr2,self.scene2,self.cursors2,self.plots2)
-    @on_trait_change('vmin,vmax')
-    def UpdateVminVmax(self):
-        '''Update the 1st set of plots using the sliders'''
-        if 'XY' in self.plots:
-            self.plots['XY'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
-            self.plots['XZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
-            self.plots['YZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
     @on_trait_change('tindex')
     def update_all_plots(self):
         for i in range(2):
@@ -175,15 +198,66 @@ class ArrayView4D(HasTraits):
                 cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
                 cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
 
-class ArrayView4DDual(ArrayView4D):
+# Same as ArrayView4D but adding vmin and vmax sliders
+class ArrayView4DVminVmax(ArrayView4D):
+    minI16 = Int(0)
+    maxI16 = Int(2**16)
+    vmin = Range(low='minI16', high='maxI16', value=0, exclude_high=False, mode='slider')
+    vmax = Range(low='minI16', high='maxI16', value=0, exclude_high=False, mode='slider')
+    
+    # The layout of the dialog created
+    view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
+                Group('xindex','yindex','zindex', 'tindex', 'vmin', 'vmax'), resizable=True)
+    def display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=False):
+        ArrayView4D.display_scene_helper(self,arr,scene,cursors,plots)
+        if updateVminVmax:
+            self.vmin,self.vmax = arr.min(),arr.max()
+    
+    @on_trait_change('scene.activated')
+    def display_scene(self):
+        print 'Scene activated!'
+        self.display_scene_helper(self.arr,self.scene,self.cursors,self.plots,updateVminVmax=True)
+    @on_trait_change('vmin,vmax')
+    def UpdateVminVmax(self):
+        '''Update the 1st set of plots using the sliders'''
+        if 'XY' in self.plots:
+            self.plots['XY'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
+            self.plots['XZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
+            self.plots['YZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
+
+class ArrayView4DDual(ArrayView4DVminVmax):
     # The layout of the dialog created
     view = View(VGroup(HGroup(
                     Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                     Item('scene2', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 ),
-                Group('xindex','yindex','zindex', 'tindex', 'vmin', 'vmax')), resizable=True)
+                Group('xindex','yindex','zindex','tindex','vmin','vmax')), resizable=True)
     def __init__(self,arr,arr2,cursorSize=2,**traits):
         ArrayView4D.__init__(self,arr=arr,arr2=arr2,cursorSize=cursorSize,**traits) # Call __init__ on the super
+
+class ArrayViewDoodle(ArrayView4DDual):
+    def display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=False):
+        ArrayView4DDual.display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=updateVminVmax)
+        self.AddMouseInteraction()
+    def AddMouseInteraction(self):
+        # the heart of the mouse interactions
+        def mouseClick(obj, evt):
+            position = obj.GetCurrentCursorPosition()
+            if self.mouseInteraction not in mouseInteractionModes:
+                fail
+            elif self.mouseInteraction=='print':
+                print position
+            elif self.mouseInteraction=='add':
+                print 'Doodle',position
+                self.arr[self.tindex,self.zindex,position[0],position[1]] = 0
+                self.plots['XY'].mlab_source.scalars[position[0],position[1]] = 0
+                self.plots['XY'].mlab_source.scalars = self.plots['XY'].mlab_source.scalars
+                #self.plots['XY'].mlab_source.scalars = self.arr[self.tindex,self.zindex,:,:] # have to completely rebuild for update...
+            elif self.mouseInteraction=='erase': # erase mode
+                print 'Erase',position
+        
+        self.plots['XY'].ipw.add_observer('InteractionEvent', mouseClick)
+        self.plots['XY'].ipw.add_observer('StartInteractionEvent', mouseClick)
 
 class ArrayViewVolume(HasTraits):
     low = Int(0)
@@ -233,5 +307,5 @@ if __name__=='__main__':
     for i in range(1,numLoad):
         arr[i]= GTL.LoadMonolithic(name[0]+str(i+1)+name[2])
     
-    a = ArrayView4DDual(arr=arr,arr2=np.array(arr)*-1)
+    a = ArrayViewDoodle(arr=arr,arr2=np.array(arr)*-1)
     a.configure_traits()
