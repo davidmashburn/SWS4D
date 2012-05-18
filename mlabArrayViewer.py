@@ -29,8 +29,6 @@ from tvtk.api import tvtk
 # This class is the heart of the code; in fact, it contains 90% of what
 # is needed for ArrayView4DDual as well.
 
-mouseInteractionModes = ['print','add','erase','line','plane']
-
 class ArrayView4D(HasTraits):
     low = Int(0)
     tlength = Property(depends_on=['arr'])
@@ -61,15 +59,11 @@ class ArrayView4D(HasTraits):
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 Group('xindex','yindex','zindex', 'tindex'), resizable=True)
     
-    def __init__(self,arr,arr2=None,cursorSize=2,**traits):
-        if arr2==None:
-            HasTraits.__init__(self,arr=arr,**traits)
-        else:
-            HasTraits.__init__(self,arr=arr,arr2=arr2,**traits)
-            self.cursors2 = {'x':None, 'y':None, 'zx':None, 'zy':None}
+    def __init__(self,arr,cursorSize=2,**traits):
+        HasTraits.__init__(self,arr=arr,**traits)
         self.cursors = {'x':None, 'y':None, 'zx':None, 'zy':None}        
         self.cursorSize = cursorSize
-        
+    
     def display_scene_helper(self,arr,scene,cursors,plots,plotbuf=10,zsc=2.6):
         # Interaction properties can only be changed after the scene
         # has been created, and thus the interactor exists
@@ -146,12 +140,13 @@ class ArrayView4D(HasTraits):
         cursors['y']  = quickLine( self.yindex, [0,plotbuf+xs+zs*zsc] )
         cursors['zx'] = quickLine( (self.zindex-zs)*zsc - plotbuf, [0,xs] )
         cursors['zy'] = quickLine( [0,ys], plotbuf+xs+self.zindex*zsc )
+    
     def update_all_plots(self,arr,plots):
         if plots is not {}:
             plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]
             plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]
             plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T
-    def update_x_plots(self):
+    def update_x_plots(self,arr,plots,cursors):
         if plots is not {}:
             plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T
             cursors['x'].mlab_source.set( y=[self.xindex]*2 )
@@ -159,7 +154,7 @@ class ArrayView4D(HasTraits):
         if plots is not {}:
             plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]
             cursors['y'].mlab_source.set( x=[self.yindex]*2 )
-    def update_z_plots(self):
+    def update_z_plots(self,arr,plots,cursors):
         xs,ys,zs = self.arr.shape[3],self.arr.shape[2],self.arr.shape[1]
         if plots is not {}:
             plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]
@@ -180,7 +175,7 @@ class ArrayView4D(HasTraits):
     def update_y_plots_cb(self):
         self.update_y_plots(self.arr,self.plots,self.cursors)
     @on_trait_change('zindex')
-    def update_z_plots(self):
+    def update_z_plots_cb(self):
         self.update_z_plots(self.arr,self.plots,self.cursors)
 
 # Same as ArrayView4D but adding vmin and vmax sliders
@@ -222,7 +217,10 @@ class ArrayView4DDual(ArrayView4DVminVmax):
                 ),
                 Group('xindex','yindex','zindex','tindex','vmin','vmax')), resizable=True)
     def __init__(self,arr,arr2,cursorSize=2,**traits):
-        ArrayView4DVminVmax.__init__(self,arr=arr,arr2=arr2,cursorSize=cursorSize,**traits)
+        HasTraits.__init__(self,arr=arr,arr2=arr2,**traits)
+        self.cursors = {'x':None, 'y':None, 'zx':None, 'zy':None}        
+        self.cursors2 = {'x':None, 'y':None, 'zx':None, 'zy':None}
+        self.cursorSize = cursorSize
     @on_trait_change('scene2.activated')
     def display_scene2(self):
         self.display_scene_helper(self.arr2,self.scene2,self.cursors2,self.plots2)
@@ -239,14 +237,16 @@ class ArrayView4DDual(ArrayView4DVminVmax):
         self.update_y_plots(self.arr,self.plots,self.cursors)
         self.update_y_plots(self.arr2,self.plots2,self.cursors2)
     @on_trait_change('zindex')
-    def update_z_plots(self):
+    def update_z_plots_cb(self):
         self.update_z_plots(self.arr,self.plots,self.cursors)
         self.update_z_plots(self.arr2,self.plots2,self.cursors2)
+
+mouseInteractionModes = ['print','doodle','erase','line','plane']
 
 class ArrayViewDoodle(ArrayView4DDual):
     seedArr = Array(shape=[None]*4)
     
-    mouseInteraction = String(mouseInteractionModes[0])
+    mouseInteraction = String('doodle')
     
     def __init__(self,arr,arr2,seedArr=None,cursorSize=2,**traits):
         ArrayView4DDual.__init__(self,arr=arr,arr2=arr2,cursorSize=cursorSize,**traits)
@@ -256,16 +256,20 @@ class ArrayViewDoodle(ArrayView4DDual):
             self.seedArr = seedArr
     def display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=False):
         ArrayView4DDual.display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=updateVminVmax)
+        for p in (self.plots,self.plots2):
+            for s in ('XY','XZ','YZ'):
+                p[s].mlab_source.scalars = np.array(p[s].mlab_source.scalars)
+        self.plots['XY']
         self.AddMouseInteraction()
     def AddMouseInteraction(self):
         # the heart of the mouse interactions
         def mouseClick(obj, evt):
             position = obj.GetCurrentCursorPosition()
             if self.mouseInteraction not in mouseInteractionModes:
-                fail
+                print 'ERROR! UNSUPPORTED MODE!'
             elif self.mouseInteraction=='print':
                 print position
-            elif self.mouseInteraction=='add':
+            elif self.mouseInteraction=='doodle':
                 print 'Doodle',position
                 self.seedArr[self.tindex,self.zindex,position[0],position[1]] = 0
                 self.plots['XY'].mlab_source.scalars[position[0],position[1]] = 0
@@ -276,7 +280,25 @@ class ArrayViewDoodle(ArrayView4DDual):
         
         self.plots['XY'].ipw.add_observer('InteractionEvent', mouseClick)
         self.plots['XY'].ipw.add_observer('StartInteractionEvent', mouseClick)
-
+    def update_all_plots(self,arr,plots):
+        if plots is not {}:
+            plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]*self.seedArr[self.tindex,self.zindex]
+            plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]*self.seedArr[self.tindex,:,self.yindex,:]
+            plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T*self.seedArr[self.tindex,:,:,self.xindex].T
+    def update_x_plots(self,arr,plots,cursors):
+        if plots is not {}:
+            plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T*self.seedArr[self.tindex,:,:,self.xindex].T
+            cursors['x'].mlab_source.set( y=[self.xindex]*2 )
+    def update_y_plots(self,arr,plots,cursors):
+        if plots is not {}:
+            plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]*self.seedArr[self.tindex,:,self.yindex,:]
+            cursors['y'].mlab_source.set( x=[self.yindex]*2 )
+    def update_z_plots(self,arr,plots,cursors):
+        xs,ys,zs = self.arr.shape[3],self.arr.shape[2],self.arr.shape[1]
+        if plots is not {}:
+            plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]*self.seedArr[self.tindex,self.zindex]
+            cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
+            cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
 class ArrayViewVolume(HasTraits):
     low = Int(0)
     tlength = Property(depends_on=['arr'])
