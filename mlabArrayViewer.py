@@ -9,6 +9,8 @@ from mayavi.core.ui.api import MayaviScene, SceneEditor, MlabSceneModel
 from mayavi import mlab
 from tvtk.api import tvtk
 
+from np_utils import BresenhamFunction,circs,shprs
+
 # Using the ipw widget interactions instead, remove this later?
 #def picker_callback(picker_obj):
 #    print picker_obj
@@ -246,7 +248,7 @@ mouseInteractionModes = ['print','doodle','erase','line','plane']
 class ArrayViewDoodle(ArrayView4DDual):
     seedArr = Array(shape=[None]*4)
     
-    mouseInteraction = String('doodle')
+    mouseInteraction = String('line')
     
     def __init__(self,arr,arr2,seedArr=None,cursorSize=2,**traits):
         ArrayView4DDual.__init__(self,arr=arr,arr2=arr2,cursorSize=cursorSize,**traits)
@@ -254,12 +256,11 @@ class ArrayViewDoodle(ArrayView4DDual):
             self.seedArr = arr*0+1
         else:
             self.seedArr = seedArr
+        self.lastPos=None
     def display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=False):
         ArrayView4DDual.display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=updateVminVmax)
-        for p in (self.plots,self.plots2):
-            for s in ('XY','XZ','YZ'):
-                p[s].mlab_source.scalars = np.array(p[s].mlab_source.scalars)
-        self.plots['XY']
+        for s in ('XY','XZ','YZ'):
+            plots[s].mlab_source.scalars = np.array(plots[s].mlab_source.scalars)
         self.AddMouseInteraction()
     def AddMouseInteraction(self):
         # the heart of the mouse interactions
@@ -267,16 +268,29 @@ class ArrayViewDoodle(ArrayView4DDual):
             position = obj.GetCurrentCursorPosition()
             if self.mouseInteraction not in mouseInteractionModes:
                 print 'ERROR! UNSUPPORTED MODE!'
+                return
             elif self.mouseInteraction=='print':
                 print position
             elif self.mouseInteraction=='doodle':
                 print 'Doodle',position
                 self.seedArr[self.tindex,self.zindex,position[0],position[1]] = 0
                 self.plots['XY'].mlab_source.scalars[position[0],position[1]] = 0
-                self.plots['XY'].mlab_source.scalars = self.plots['XY'].mlab_source.scalars
-                #self.plots['XY'].mlab_source.scalars = self.arr[self.tindex,self.zindex,:,:] # have to completely rebuild for update...
+                #self.plots['XY'].mlab_source.scalars = self.arr[self.tindex,self.zindex,:,:] # complete rebuild
             elif self.mouseInteraction=='erase': # erase mode
                 print 'Erase',position
+            elif self.mouseInteraction=='line':
+                if self.lastPos==None:
+                    self.seedArr[self.tindex,self.zindex,position[0],position[1]] = 0
+                    self.plots['XY'].mlab_source.scalars[position[0],position[1]] = 0
+                else:
+                    points = BresenhamFunction(map(int,position[:2]),map(int,self.lastPos[:2]))
+                    self.seedArr[self.tindex,self.zindex,[i[0] for i in points],[i[1] for i in points]] = 0
+                    self.plots['XY'].mlab_source.scalars[[i[0] for i in points],[i[1] for i in points]] = 0
+                
+                self.lastPos = position
+            
+            if self.mouseInteraction!='print':
+                self.plots['XY'].mlab_source.scalars = self.plots['XY'].mlab_source.scalars
         
         self.plots['XY'].ipw.add_observer('InteractionEvent', mouseClick)
         self.plots['XY'].ipw.add_observer('StartInteractionEvent', mouseClick)
@@ -305,6 +319,7 @@ class ArrayViewVolume(HasTraits):
     def _get_tlength(self):
         return self.arr.shape[0]-1
     tindex = Range(low='low', high='tlength', value=0, exclude_high=False, mode='slider') # or spinner
+    zscale = Int(2.6)
     
     arr = Array(shape=[None]*4)
     
@@ -323,7 +338,10 @@ class ArrayViewVolume(HasTraits):
     
     @on_trait_change('scene.activated')
     def make_plot(self):
-        self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(self.arr[self.tindex]), vmin=self.vmin, vmax=self.vmax)
+        # This really doesn't gain me anything...
+        x,y,z = np.mgrid[:arr.shape[3],:arr.shape[2],:arr.shape[1]]
+        z*=self.zscale
+        self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(x,y,z,self.arr[self.tindex].transpose()), vmin=self.vmin, vmax=self.vmax)
     
     @on_trait_change('tindex')
     def update_plot(self):
@@ -347,5 +365,6 @@ if __name__=='__main__':
     for i in range(1,numLoad):
         arr[i]= GTL.LoadMonolithic(name[0]+str(i+1)+name[2])
     
-    a = ArrayViewDoodle(arr=arr,arr2=np.array(arr)*-1)
+    #a = ArrayViewDoodle(arr=arr,arr2=np.array(arr)*-1)
+    a = ArrayViewVolume(arr=arr)
     a.configure_traits()
