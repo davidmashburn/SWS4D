@@ -3,6 +3,8 @@ import numpy as np
 import scipy.ndimage
 import scipy.sparse
 
+import wx
+
 from traits.api import HasTraits, Int, Range, String, Bool, Instance, Property, Array, List, Dict, Button, on_trait_change, NO_COMPARE
 from traitsui.api import View, Item, Group, RangeEditor, VGroup, HGroup, VSplit, HSplit, NullEditor
 from mayavi.core.api import PipelineBase
@@ -13,8 +15,11 @@ from tvtk.api import tvtk
 
 import mahotas
 
-from np_utils import BresenhamFunction,circs,shprs
+#import np_utils
+#reload(np_utils)
+from np_utils import BresenhamFunction,BresenhamPlane,circs,shprs
 import coo_utils
+
 
 # Using the ipw widget interactions instead, remove this later?
 #def picker_callback(picker_obj):
@@ -262,7 +267,9 @@ mouseInteractionModes = ['print','doodle','erase','line','plane']
 class ArrayViewDoodle(ArrayView4DDual):
     seedArr = Array(shape=[None]*4)
     
-    mouseInteraction = String('line')
+    nextSeedValue = Range(low=1, high=10000, value=2, exclude_high=False, mode='spinner')
+    
+    mouseInteraction = String('doodle')
     
     watershedButton = Button('Run Watershed')
     saveButton = Button('Save')
@@ -271,16 +278,17 @@ class ArrayViewDoodle(ArrayView4DDual):
                     Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
                     Item('scene2', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
                 ),
-                Group('xindex','yindex','zindex','tindex','vmin','vmax','watershedButton','saveButton')), resizable=True)
+                Group('xindex','yindex','zindex','tindex','vmin','vmax','watershedButton','nextSeedValue','saveButton')), resizable=True)
     
     def __init__(self,arr,arr2,seedArr=None,cursorSize=2,**traits):
         ArrayView4DDual.__init__(self,arr=arr,arr2=arr2,cursorSize=cursorSize,**traits)
         if seedArr==None:
-            self.seedArr = arr*0+1
+            self.seedArr = arr*0
         else:
             self.seedArr = seedArr
         self.waterArr = self.arr2 # make an alias for the watershed
         self.lastPos=None
+        self.lastPos2=None
     def display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=False):
         ArrayView4DDual.display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=updateVminVmax)
         for s in ('XY','XZ','YZ'):
@@ -290,28 +298,38 @@ class ArrayViewDoodle(ArrayView4DDual):
         # the heart of the mouse interactions
         def mouseClick(obj, evt):
             position = obj.GetCurrentCursorPosition()
+            pos = map(int,position)
+            pos[2] = self.zindex
             if self.mouseInteraction not in mouseInteractionModes:
                 print 'ERROR! UNSUPPORTED MODE!'
                 return
             elif self.mouseInteraction=='print':
-                print position
-            elif self.mouseInteraction=='doodle':
-                print 'Doodle',position
-                self.seedArr[self.tindex,self.zindex,position[0],position[1]] = 0
-                self.plots['XY'].mlab_source.scalars[position[0],position[1]] = 0
-                #self.plots['XY'].mlab_source.scalars = self.arr[self.tindex,self.zindex,:,:] # complete rebuild
+                print position,pos
+            elif self.mouseInteraction in ['doodle','line','plane']:
+                print self.mouseInteraction,position,pos
+                self.seedArr[self.tindex,self.zindex,pos[0],pos[1]] = self.nextSeedValue
+                #self.plots['XY'].mlab_source.scalars[pos[0],pos[1]] = self.nextSeedValue
+                
+                if self.lastPos!=None:
+                    if self.mouseInteraction == 'line':
+                        points = np.array(BresenhamFunction(pos,self.lastPos))
+                    elif self.mouseInteraction == 'plane':
+                        planepoints = BresenhamPlane(pos,self.lastPos,self.lastPos2)
+                        points = []
+                        for p in planepoints:
+                            if 0<=p[2]<self.arr.shape[1] and 0<=p[0]<self.arr.shape[2] and 0<=p[1]<self.arr.shape[3]:
+                                points.append(p)
+                        points = np.array(points)
+                    self.seedArr[self.tindex,points[:,2],points[:,0],points[:,1]] = self.nextSeedValue
+                
+                if self.mouseInteraction == 'line' and not np.sum(self.lastPos!=pos)==0:
+                    self.lastPos = pos
+                elif self.mouseInteraction == 'plane' and not np.sum(self.lastPos!=pos)==0:
+                    self.lastPos, self.lastPos2 = pos, self.lastPos
+            
             elif self.mouseInteraction=='erase': # erase mode
                 print 'Erase',position
-            elif self.mouseInteraction=='line':
-                if self.lastPos==None:
-                    self.seedArr[self.tindex,self.zindex,position[0],position[1]] = 0
-                    self.plots['XY'].mlab_source.scalars[position[0],position[1]] = 0
-                else:
-                    points = BresenhamFunction(map(int,position[:2]),map(int,self.lastPos[:2]))
-                    self.seedArr[self.tindex,self.zindex,[i[0] for i in points],[i[1] for i in points]] = 0
-                    self.plots['XY'].mlab_source.scalars[[i[0] for i in points],[i[1] for i in points]] = 0
-                
-                self.lastPos = position
+            self.update_all_plots_cb()
             
             if self.mouseInteraction!='print':
                 self.plots['XY'].mlab_source.scalars = self.plots['XY'].mlab_source.scalars
@@ -327,29 +345,38 @@ class ArrayViewDoodle(ArrayView4DDual):
             self.waterArr[t] = mahotas.cwatershed(self.arr[t],self.seedArr[t])
     def update_all_plots(self,arr,plots):
         if plots is not {}:
-            plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]*self.seedArr[self.tindex,self.zindex]
-            plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]*self.seedArr[self.tindex,:,self.yindex,:]
-            plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T*self.seedArr[self.tindex,:,:,self.xindex].T
+            plots['XY'].mlab_source.scalars = mergeArrAndSeedArr( arr[self.tindex,self.zindex], self.seedArr[self.tindex,self.zindex] )
+            plots['XZ'].mlab_source.scalars = mergeArrAndSeedArr( arr[self.tindex,:,self.yindex,:], self.seedArr[self.tindex,:,self.yindex,:] )
+            plots['YZ'].mlab_source.scalars = mergeArrAndSeedArr( arr[self.tindex,:,:,self.xindex].T, self.seedArr[self.tindex,:,:,self.xindex].T )
     def update_x_plots(self,arr,plots,cursors):
         if plots is not {}:
-            plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T*self.seedArr[self.tindex,:,:,self.xindex].T
+            plots['YZ'].mlab_source.scalars = mergeArrAndSeedArr( arr[self.tindex,:,:,self.xindex].T, self.seedArr[self.tindex,:,:,self.xindex].T )
             cursors['x'].mlab_source.set( y=[self.xindex]*2 )
     def update_y_plots(self,arr,plots,cursors):
         if plots is not {}:
-            plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]*self.seedArr[self.tindex,:,self.yindex,:]
+            plots['XZ'].mlab_source.scalars = mergeArrAndSeedArr( arr[self.tindex,:,self.yindex,:], self.seedArr[self.tindex,:,self.yindex,:] )
             cursors['y'].mlab_source.set( x=[self.yindex]*2 )
     def update_z_plots(self,arr,plots,cursors):
         xs,ys,zs = self.arr.shape[3],self.arr.shape[2],self.arr.shape[1]
         if plots is not {}:
-            plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]*self.seedArr[self.tindex,self.zindex]
+            plots['XY'].mlab_source.scalars = mergeArrAndSeedArr( arr[self.tindex,self.zindex], self.seedArr[self.tindex,self.zindex] )
             cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
             cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
     @on_trait_change('watershedButton')
     def watershedButtonCallback(self):
-        self.RunWatershed(index = tindex)
+        self.RunWatershed(index = self.tindex)
+        self.update_all_plots(self.waterArr,self.plots2)
+    @on_trait_change('nextSeedValue')
+    def resetLine(self):
+        self.lastPos = None
+    
     @on_trait_change('saveAll')
     def OnSave(self):
         pass
+
+def mergeArrAndSeedArr(arr,seedArr):
+    return arr + 100*seedArr
+
 class ArrayViewVolume(HasTraits):
     low = Int(0)
     tlength = Property(depends_on=['arr'])
