@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 import numpy as np
+import scipy.ndimage
+import scipy.sparse
 
 from traits.api import HasTraits, Int, Range, String, Bool, Instance, Property, Array, List, Dict, Button, on_trait_change, NO_COMPARE
 from traitsui.api import View, Item, Group, RangeEditor, VGroup, HGroup, VSplit, HSplit, NullEditor
@@ -9,7 +11,10 @@ from mayavi.core.ui.api import MayaviScene, SceneEditor, MlabSceneModel
 from mayavi import mlab
 from tvtk.api import tvtk
 
+import mahotas
+
 from np_utils import BresenhamFunction,circs,shprs
+import coo_utils
 
 # Using the ipw widget interactions instead, remove this later?
 #def picker_callback(picker_obj):
@@ -245,10 +250,28 @@ class ArrayView4DDual(ArrayView4DVminVmax):
 
 mouseInteractionModes = ['print','doodle','erase','line','plane']
 
+# Eventual data structure for SW4D would be arr (array 4D), water (cooHD <diff> 2x2D), seedArr (cooHD 2x2D)
+# also, when swapping to frame, grab array with arr[0][0]
+# grab water with CooDiffToArray(cooHD[0][0])
+# grab seedArr with seedArr[0][0].todense()
+# Set arr automatically
+# set water with water[0][0] = ArrayToCooDiff(<local water frame>)
+# set seedArr with seedArr[0][0] = scipy.sparse.coo_matrix(<local seedArr frame>)
+
+# For now, skip the data compression for simplicity...
 class ArrayViewDoodle(ArrayView4DDual):
     seedArr = Array(shape=[None]*4)
     
     mouseInteraction = String('line')
+    
+    watershedButton = Button('Run Watershed')
+    saveButton = Button('Save')
+    
+    view = View(VGroup(HGroup(
+                    Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
+                    Item('scene2', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
+                ),
+                Group('xindex','yindex','zindex','tindex','vmin','vmax','watershedButton','saveButton')), resizable=True)
     
     def __init__(self,arr,arr2,seedArr=None,cursorSize=2,**traits):
         ArrayView4DDual.__init__(self,arr=arr,arr2=arr2,cursorSize=cursorSize,**traits)
@@ -256,6 +279,7 @@ class ArrayViewDoodle(ArrayView4DDual):
             self.seedArr = arr*0+1
         else:
             self.seedArr = seedArr
+        self.waterArr = self.arr2 # make an alias for the watershed
         self.lastPos=None
     def display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=False):
         ArrayView4DDual.display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=updateVminVmax)
@@ -294,6 +318,13 @@ class ArrayViewDoodle(ArrayView4DDual):
         
         self.plots['XY'].ipw.add_observer('InteractionEvent', mouseClick)
         self.plots['XY'].ipw.add_observer('StartInteractionEvent', mouseClick)
+    def RunWatershed(self,index='all'):
+        if index=='all':  self.waterArr[:]=0
+        else:             self.waterArr[index] = 0
+        
+        tList = ( range(self.arr.shape[0]) if index=='all' else [index] )
+        for t in tList:
+            self.waterArr[t] = mahotas.cwatershed(self.arr[t],self.seedArr[t])
     def update_all_plots(self,arr,plots):
         if plots is not {}:
             plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]*self.seedArr[self.tindex,self.zindex]
@@ -313,6 +344,12 @@ class ArrayViewDoodle(ArrayView4DDual):
             plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]*self.seedArr[self.tindex,self.zindex]
             cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
             cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
+    @on_trait_change('watershedButton')
+    def watershedButtonCallback(self):
+        self.RunWatershed(index = tindex)
+    @on_trait_change('saveAll')
+    def OnSave(self):
+        pass
 class ArrayViewVolume(HasTraits):
     low = Int(0)
     tlength = Property(depends_on=['arr'])
@@ -338,7 +375,6 @@ class ArrayViewVolume(HasTraits):
     
     @on_trait_change('scene.activated')
     def make_plot(self):
-        # This really doesn't gain me anything...
         x,y,z = np.mgrid[:arr.shape[3],:arr.shape[2],:arr.shape[1]]
         z*=self.zscale
         self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(x,y,z,self.arr[self.tindex].transpose()), vmin=self.vmin, vmax=self.vmax)
