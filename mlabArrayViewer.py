@@ -267,7 +267,7 @@ mouseInteractionModes = ['print','doodle','erase','line','plane']
 class ArrayViewDoodle(ArrayView4DDual):
     seedArr = Array(shape=[None]*4)
     
-    nextSeedValue = Range(low=1, high=10000, value=2, exclude_high=False, mode='spinner')
+    nextSeedValue = Range(low=0, high=10000, value=2, exclude_high=False, mode='spinner')
     
     mouseInteraction = String('doodle')
     
@@ -317,9 +317,12 @@ class ArrayViewDoodle(ArrayView4DDual):
                         planepoints = BresenhamPlane(pos,self.lastPos,self.lastPos2)
                         points = []
                         for p in planepoints:
-                            if 0<=p[2]<self.arr.shape[1] and 0<=p[0]<self.arr.shape[2] and 0<=p[1]<self.arr.shape[3]:
-                                points.append(p)
-                        points = np.array(points)
+                            if 0<=p[2]<self.arr.shape[1]-1 and 0<=p[0]<self.arr.shape[2]-1 and 0<=p[1]<self.arr.shape[3]-1:
+                                for i in range(2):
+                                    for j in range(2):
+                                        for k in range(2):
+                                            points.append((p[0]+i,p[1]+j,p[2]+k))
+                        points = np.array(list(set(points)))
                     self.seedArr[self.tindex,points[:,2],points[:,0],points[:,1]] = self.nextSeedValue
                 
                 if self.mouseInteraction == 'line' and not np.sum(self.lastPos!=pos)==0:
@@ -402,7 +405,7 @@ class ArrayViewVolume(HasTraits):
     
     @on_trait_change('scene.activated')
     def make_plot(self):
-        x,y,z = np.mgrid[:arr.shape[3],:arr.shape[2],:arr.shape[1]]
+        x,y,z = np.mgrid[:self.arr.shape[3],:self.arr.shape[2],:self.arr.shape[1]]
         z*=self.zscale
         self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(x,y,z,self.arr[self.tindex].transpose()), vmin=self.vmin, vmax=self.vmax)
     
