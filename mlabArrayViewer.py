@@ -17,7 +17,7 @@ import mahotas
 
 #import np_utils
 #reload(np_utils)
-from np_utils import BresenhamFunction,BresenhamPlane,circs,shprs
+from np_utils import BresenhamFunction,BresenhamTriangle,circs,shprs
 import coo_utils
 
 
@@ -76,21 +76,22 @@ class ArrayView4D(HasTraits):
         self.cursors = {'x':None, 'y':None, 'zx':None, 'zy':None}        
         self.cursorSize = cursorSize
     
-    def display_scene_helper(self,arr,scene,cursors,plots,plotbuf=10,zsc=2.6):
-        # Interaction properties can only be changed after the scene
-        # has been created, and thus the interactor exists
-        #self.scene.scene.background = (0, 0, 0)
-        
-        # Dumped in favor of ipw mouse stuff
-        #print 'On Mouse Pick'
-        #print self.scene.mayavi_scene._mouse_pick_dispatcher._active_pickers
-        #print self.scene.mayavi_scene.on_mouse_pick(picker_callback)
-        
-        # Set some scene properties
-        scene.scene.interactor.interactor_style = tvtk.InteractorStyleImage()
-        scene.scene.parallel_projection = True
-        scene.scene.anti_aliasing_frames = 0
-        scene.mlab.view(-90, 180)  # Secret sauce to make it line up with the standard imagej orientation
+    def display_scene_helper(self,arr,scene,cursors,plots,plotbuf=10,zsc=2.6,skipSceneItems=False):
+        if not skipSceneItems:
+            # Interaction properties can only be changed after the scene
+            # has been created, and thus the interactor exists
+            #self.scene.scene.background = (0, 0, 0)
+            
+            # Dumped in favor of ipw mouse stuff
+            #print 'On Mouse Pick'
+            #print self.scene.mayavi_scene._mouse_pick_dispatcher._active_pickers
+            #print self.scene.mayavi_scene.on_mouse_pick(picker_callback)
+            
+            # Set some scene properties
+            scene.scene.interactor.interactor_style = tvtk.InteractorStyleImage()
+            scene.scene.parallel_projection = True
+            scene.scene.anti_aliasing_frames = 0
+            scene.mlab.view(-90, 180)  # Secret sauce to make it line up with the standard imagej orientation
         
         # Grab some variables
         xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]        
@@ -128,8 +129,13 @@ class ArrayView4D(HasTraits):
                                     colormap='gray',vmin=arrMin,vmax=arrMax)
             plots[pList[i]].ipw.left_button_action = 0
         
-        # Make the red lines that display the positions of the other 2 views
-        self.MakeCursors(arr,scene,cursors)
+        if not skipSceneItems:
+            # Make the red lines that display the positions of the other 2 views
+            self.MakeCursors(arr,scene,cursors)
+        #else:
+        #    plots['XY'].ipw.origin=1
+        #    plots['XY'].ipw.point1=1
+        #    plots['XY'].ipw.point2=1
     
     def MakeCursors(self,arr,scene,cursors):
         def quickLine(x,y): # pass one list and one value
@@ -200,8 +206,8 @@ class ArrayView4DVminVmax(ArrayView4D):
     # The layout of the dialog created
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 Group('xindex','yindex','zindex', 'tindex', 'vmin', 'vmax'), resizable=True)
-    def display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=False):
-        ArrayView4D.display_scene_helper(self,arr,scene,cursors,plots)
+    def display_scene_helper(self,arr,scene,cursors,plots,plotbuf=10,zsc=2.6,skipSceneItems=False,updateVminVmax=False):
+        ArrayView4D.display_scene_helper(self,arr,scene,cursors,plots,plotbuf=plotbuf,zsc=zsc,skipSceneItems=skipSceneItems)
         if updateVminVmax:
             self.vmin,self.vmax = arr.min(),arr.max()
     
@@ -269,10 +275,12 @@ class ArrayViewDoodle(ArrayView4DDual):
     
     nextSeedValue = Range(low=0, high=10000, value=2, exclude_high=False, mode='spinner')
     
-    mouseInteraction = String('doodle')
+    mouseInteraction = String('line')
     
     watershedButton = Button('Run Watershed')
     saveButton = Button('Save')
+    
+    plots3 = Dict()
     
     view = View(VGroup(HGroup(
                     Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
@@ -289,56 +297,79 @@ class ArrayViewDoodle(ArrayView4DDual):
         self.waterArr = self.arr2 # make an alias for the watershed
         self.lastPos=None
         self.lastPos2=None
-    def display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=False):
-        ArrayView4DDual.display_scene_helper(self,arr,scene,cursors,plots,updateVminVmax=updateVminVmax)
+    def display_scene_helper(self,arr,scene,cursors,plots,plotbuf=10,zsc=2.6,skipSceneItems=False,updateVminVmax=False):
+        ArrayView4DDual.display_scene_helper(self,arr,scene,cursors,plots,plotbuf=plotbuf,zsc=zsc,skipSceneItems=skipSceneItems,updateVminVmax=updateVminVmax)
         for s in ('XY','XZ','YZ'):
             plots[s].mlab_source.scalars = np.array(plots[s].mlab_source.scalars)
-        self.AddMouseInteraction()
-    def AddMouseInteraction(self):
+    @on_trait_change('scene.activated')
+    def display_scene(self):
+        self.display_scene_helper(self.arr,self.scene,self.cursors,self.plots)
+        self.display_scene_helper(self.seedArr,self.scene,self.cursors,self.plots3,skipSceneItems=True)
+        self.AddMouseInteraction(self.plots)
+        self.SetMapPlotColormap(self.plots3,clearBG=True)
+    @on_trait_change('scene2.activated')
+    def display_scene2(self):
+        self.display_scene_helper(self.arr2,self.scene2,self.cursors2,self.plots2)
+        self.SetMapPlotColormap(self.plots2)
+        self.AddMouseInteraction(self.plots2)
+    def AddMouseInteraction(self,plots):
         # the heart of the mouse interactions
-        def mouseClick(obj, evt):
-            position = obj.GetCurrentCursorPosition()
-            pos = map(int,position)
-            pos[2] = self.zindex
-            if self.mouseInteraction not in mouseInteractionModes:
-                print 'ERROR! UNSUPPORTED MODE!'
-                return
-            elif self.mouseInteraction=='print':
-                print position,pos
-            elif self.mouseInteraction in ['doodle','line','plane']:
-                print self.mouseInteraction,position,pos
-                self.seedArr[self.tindex,self.zindex,pos[0],pos[1]] = self.nextSeedValue
-                #self.plots['XY'].mlab_source.scalars[pos[0],pos[1]] = self.nextSeedValue
-                
-                if self.lastPos!=None:
-                    if self.mouseInteraction == 'line':
-                        points = np.array(BresenhamFunction(pos,self.lastPos))
-                    elif self.mouseInteraction == 'plane':
-                        planepoints = BresenhamPlane(pos,self.lastPos,self.lastPos2)
-                        points = []
-                        for p in planepoints:
-                            if 0<=p[2]<self.arr.shape[1]-1 and 0<=p[0]<self.arr.shape[2]-1 and 0<=p[1]<self.arr.shape[3]-1:
-                                for i in range(2):
-                                    for j in range(2):
-                                        for k in range(2):
-                                            points.append((p[0]+i,p[1]+j,p[2]+k))
-                        points = np.array(list(set(points)))
-                    self.seedArr[self.tindex,points[:,2],points[:,0],points[:,1]] = self.nextSeedValue
-                
-                if self.mouseInteraction == 'line' and not np.sum(self.lastPos!=pos)==0:
-                    self.lastPos = pos
-                elif self.mouseInteraction == 'plane' and not np.sum(self.lastPos!=pos)==0:
-                    self.lastPos, self.lastPos2 = pos, self.lastPos
+        for view in ['XY','XZ','YZ']:
+            def genMC(view):
+                def mouseClick(obj, evt):
+                    position = obj.GetCurrentCursorPosition()
+                    # pos = map(int,position); pos[2] = self.zindex
+                    if view=='XY':
+                        pos = [self.tindex,self.zindex,int(position[0]),int(position[1])]
+                    elif view=='XZ':
+                        pos = [self.tindex,int(position[0]),self.yindex,int(position[1])]
+                    elif view=='YZ':
+                        pos = [self.tindex,int(position[1]),int(position[0]),self.xindex]
+                    
+                    if self.mouseInteraction not in mouseInteractionModes:
+                        print 'ERROR! UNSUPPORTED MODE!'
+                        return
+                    elif self.mouseInteraction=='print':
+                        print position,pos
+                    elif self.mouseInteraction in ['doodle','line','plane']:
+                        print self.mouseInteraction,position,pos
+                        self.seedArr[self.tindex,self.zindex,pos[0],pos[1]] = self.nextSeedValue
+                        #self.plots['XY'].mlab_source.scalars[pos[0],pos[1]] = self.nextSeedValue
+                        
+                        if self.lastPos!=None:
+                            if self.mouseInteraction == 'line':
+                                points = np.array(BresenhamFunction(pos,self.lastPos))
+                            elif self.mouseInteraction == 'plane':
+                                planepoints = BresenhamTriangle(pos,self.lastPos,self.lastPos2)
+                                points = []
+                                for p in planepoints:
+                                    #if 0<=p[2]<self.arr.shape[1]-1 and 0<=p[0]<self.arr.shape[2]-1 and 0<=p[1]<self.arr.shape[3]-1:
+                                    if 0<=p[0]<self.arr.shape[0]-1 and 0<=p[1]<self.arr.shape[1]-1 and 0<=p[2]<self.arr.shape[2]-1 and 0<=p[2]<self.arr.shape[2]-1:
+                                        for i in range(2):
+                                            for j in range(2):
+                                                for k in range(2):
+                                                    #points.append((p[0]+i,p[1]+j,p[2]+k))
+                                                    points.append((p[0]+i,p[1]+j,p[2]+k,p[3]))
+                                points = np.array(list(set(points)))
+                            #self.seedArr[self.tindex,points[:,2],points[:,0],points[:,1]] = self.nextSeedValue
+                            self.seedArr[points[:,0],points[:,1],points[:,2],points[:,3]] = self.nextSeedValue
+                        
+                        if self.mouseInteraction == 'line' and not np.sum(self.lastPos!=pos)==0:
+                            self.lastPos = pos
+                        elif self.mouseInteraction == 'plane' and not np.sum(self.lastPos!=pos)==0:
+                            self.lastPos, self.lastPos2 = pos, self.lastPos
+                    
+                    elif self.mouseInteraction=='erase': # erase mode
+                        print 'Erase',position
+                    self.update_all_plots_cb()
+                    
+                    if self.mouseInteraction!='print':
+                        plots[view].mlab_source.scalars = plots[view].mlab_source.scalars
+                return mouseClick
             
-            elif self.mouseInteraction=='erase': # erase mode
-                print 'Erase',position
-            self.update_all_plots_cb()
-            
-            if self.mouseInteraction!='print':
-                self.plots['XY'].mlab_source.scalars = self.plots['XY'].mlab_source.scalars
-        
-        self.plots['XY'].ipw.add_observer('InteractionEvent', mouseClick)
-        self.plots['XY'].ipw.add_observer('StartInteractionEvent', mouseClick)
+            plots[view].ipw.add_observer('InteractionEvent', genMC(view))
+            plots[view].ipw.add_observer('StartInteractionEvent', genMC(view))
+    
     def RunWatershed(self,index='all'):
         if index=='all':  self.waterArr[:]=0
         else:             self.waterArr[index] = 0
@@ -369,16 +400,50 @@ class ArrayViewDoodle(ArrayView4DDual):
     def watershedButtonCallback(self):
         self.RunWatershed(index = self.tindex)
         self.update_all_plots(self.waterArr,self.plots2)
+        self.update_all_plots(self.seedArr,self.plots3)
     @on_trait_change('nextSeedValue')
     def resetLine(self):
         self.lastPos = None
-    
+    @on_trait_change('tindex')
+    def update_all_plots_cb(self):
+        self.update_all_plots(self.arr,self.plots)
+        self.update_all_plots(self.arr2,self.plots2)
+        self.update_all_plots(self.seedArr,self.plots3)
+    @on_trait_change('xindex')
+    def update_x_plots_cb(self):
+        self.update_x_plots(self.arr,self.plots,self.cursors)
+        self.update_x_plots(self.arr2,self.plots2,self.cursors2)
+        self.update_x_plots(self.seedArr,self.plots3,self.cursors)
+    @on_trait_change('yindex')
+    def update_y_plots_cb(self):
+        self.update_y_plots(self.arr,self.plots,self.cursors)
+        self.update_y_plots(self.arr2,self.plots2,self.cursors2)
+        self.update_y_plots(self.seedArr,self.plots3,self.cursors)
+    @on_trait_change('zindex')
+    def update_z_plots_cb(self):
+        self.update_z_plots(self.arr,self.plots,self.cursors)
+        self.update_z_plots(self.arr2,self.plots2,self.cursors2)
+        self.update_z_plots(self.seedArr,self.plots3,self.cursors)
+
     @on_trait_change('saveAll')
     def OnSave(self):
         pass
-
+    
+    def SetMapPlotColormap(self,plots,clearBG=False):
+        '''Secret sauce to display the map plot and make it look like SWS'''
+        from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
+        mapPlotCmap = np.zeros([4,10000],np.int)
+        mapPlotCmap[:3] = GetMapPlotRandomArray()
+        mapPlotCmap[3] = 255
+        if clearBG:
+            mapPlotCmap[3,0] = 0
+        for i in ['XY','XZ','YZ']:
+            plots[i].module_manager.scalar_lut_manager.lut.table = mapPlotCmap.T
+            plots[i].ipw.reslice_interpolate = 'nearest'
+            plots[i].parent.scalar_lut_manager.data_range = 0,10000
+    
 def mergeArrAndSeedArr(arr,seedArr):
-    return arr + 100*seedArr
+    return arr + 0*seedArr
 
 class ArrayViewVolume(HasTraits):
     low = Int(0)
