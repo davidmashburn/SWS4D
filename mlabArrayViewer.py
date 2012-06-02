@@ -626,17 +626,35 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         self.update_z_plots(self.waterArr_t,self.plotsWater,self.cursorsWater)
         self.update_z_plots(self.seedArr_t,self.plotsSeeds,self.cursors)
 
+    def GetFileForSaveLoad(self):
+        f = wx.FileSelector()
+        # Strip off extensions if present on the file
+        for i in ['_nnzs.npy','_rcd.npy','_shape.txt']:
+            if f[-len(i):]==i:
+                f = f[:-len(i)]
+        for i in ['_waterDiff','_seeds']:
+            if f[-len(i):]==i:
+                f = f[:-len(i)]
+        return f
     @on_trait_change('saveButton')
     def OnSave(self):
-        f = wx.FileSelector()
-        coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.arr.shape,f+'_waterDiff',fromlil=True)
-        coo_utils.SaveCooHDToRCDFile(self.seedLil,self.arr.shape,f+'_seeds_',fromlil=True)
+        f = self.GetFileForSaveLoad()
+        if f!=None:
+            coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.arr.shape,f+'_waterDiff',fromlil=True)
+            coo_utils.SaveCooHDToRCDFile(self.seedLil,self.arr.shape,f+'_seeds',fromlil=True)
     @on_trait_change('loadButton')
     def OnLoad(self):
-        f = wx.FileSelector()
-        coo_utils.LoadRCDFileToCooHD(self.waterLilDiff,self.arr.shape,f+'_waterDiff',tolil=True)
-        coo_utils.LoadRCDFileToCooHD(self.seedLil,self.arr.shape,f+'_seeds_',tolil=True)
-    
+        f = self.GetFileForSaveLoad()
+        shapeWD = coo_utils.GetShapeFromFile( f+'_waterDiff' )
+        shapeS = coo_utils.GetShapeFromFile( f+'_seeds' )
+        if self.arr.shape == shapeWD == shapeS:
+            shapeWD, self.waterLilDiff = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
+            shapeS, self.seedLil = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
+            self.updateSeedArr_t()
+            self.updateWaterArr_t()
+            self.update_all_plots_cb()
+        else:
+            wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.arr.shape,shapeWD,shapeS]))
     def SetMapPlotColormap(self,plots,clearBG=False):
         '''Secret sauce to display the map plot and make it look like SWS'''
         from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
