@@ -543,10 +543,10 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                     
                     elif self.mouseInteraction=='erase': # erase mode
                         print 'Erase',position
-                    self.update_all_plots_cb()
                     
                     if self.mouseInteraction!='print':
                         plots[view].mlab_source.scalars = plots[view].mlab_source.scalars
+                        self.update_seeds_overlay()
                 return mouseClick
             
             plots[view].ipw.add_observer('InteractionEvent', genMC(view))
@@ -603,13 +603,23 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     @on_trait_change('nextSeedValue')
     def resetLine(self):
         self.lastPos = None
+    
+    def update_seeds_overlay(self):
+        import time
+        t=time.time()
+        self.updateSeedArr_t()
+        print 'Update arrayt time:',
+        print time.time()-t;t=time.time()
+        self.update_all_plots(self.seedArr_t,self.plotsSeeds)
+        print 'Update plots time:',
+        print time.time()-t;t=time.time()
+    
     @on_trait_change('tindex')
     def update_all_plots_cb(self):
         self.update_all_plots(self.arr[self.tindex],self.plots)
         self.updateWaterArr_t()
         self.update_all_plots(self.waterArr_t,self.plotsWater)
-        self.updateSeedArr_t()
-        self.update_all_plots(self.seedArr_t,self.plotsSeeds)
+        self.update_seeds_overlay()
     @on_trait_change('xindex')
     def update_x_plots_cb(self):
         self.update_x_plots(self.arr[self.tindex],self.plots,self.cursors)
@@ -626,7 +636,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         self.update_z_plots(self.waterArr_t,self.plotsWater,self.cursorsWater)
         self.update_z_plots(self.seedArr_t,self.plotsSeeds,self.cursors)
 
-    def GetFileForSaveLoad(self):
+    def GetFileBasenameForSaveLoad(self):
         f = wx.FileSelector()
         # Strip off extensions if present on the file
         for i in ['_nnzs.npy','_rcd.npy','_shape.txt']:
@@ -638,13 +648,13 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         return f
     @on_trait_change('saveButton')
     def OnSave(self):
-        f = self.GetFileForSaveLoad()
+        f = self.GetFileBasenameForSaveLoad()
         if f!=None:
             coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.arr.shape,f+'_waterDiff',fromlil=True)
             coo_utils.SaveCooHDToRCDFile(self.seedLil,self.arr.shape,f+'_seeds',fromlil=True)
     @on_trait_change('loadButton')
     def OnLoad(self):
-        f = self.GetFileForSaveLoad()
+        f = self.GetFileBasenameForSaveLoad()
         shapeWD = coo_utils.GetShapeFromFile( f+'_waterDiff' )
         shapeS = coo_utils.GetShapeFromFile( f+'_seeds' )
         if self.arr.shape == shapeWD == shapeS:
@@ -719,6 +729,6 @@ if __name__=='__main__':
     for i in range(1,numLoad):
         arr[i]= GTL.LoadMonolithic(name[0]+str(i+1)+name[2])
     
-    #a = ArrayViewDoodle(arr=arr,arr2=np.array(arr)*-1)
-    a = ArrayViewVolume(arr=arr)
+    a = SeedWaterSegmenter4DCompressed(arr=arr)
+    #a = ArrayViewVolume(arr=arr)
     a.configure_traits()
