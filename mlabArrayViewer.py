@@ -535,6 +535,8 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                             #self.seedArr[self.tindex,points[:,2],points[:,0],points[:,1]] = self.nextSeedValue
                             for p in points:
                                 self.seedLil[p[0]][p[1]][p[2],p[3]] = self.nextSeedValue
+                                if p[0]==self.tindex:
+                                    self.seedArr_t[p[1],p[2],p[3]]=self.nextSeedValue
                         
                         if self.mouseInteraction == 'line' and not np.sum(self.lastPos!=pos)==0:
                             self.lastPos = pos
@@ -546,7 +548,8 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                     
                     if self.mouseInteraction!='print':
                         plots[view].mlab_source.scalars = plots[view].mlab_source.scalars
-                        self.update_seeds_overlay()
+                        #self.update_seeds_overlay()
+                        self.update_all_plots(self.seedArr_t,self.plotsSeeds)
                 return mouseClick
             
             plots[view].ipw.add_observer('InteractionEvent', genMC(view))
@@ -608,12 +611,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         import time
         t=time.time()
         self.updateSeedArr_t()
-        print 'Update arrayt time:',
-        print time.time()-t;t=time.time()
         self.update_all_plots(self.seedArr_t,self.plotsSeeds)
-        print 'Update plots time:',
-        print time.time()-t;t=time.time()
-    
     @on_trait_change('tindex')
     def update_all_plots_cb(self):
         self.update_all_plots(self.arr[self.tindex],self.plots)
