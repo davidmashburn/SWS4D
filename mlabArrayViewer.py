@@ -549,7 +549,17 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                     if self.mouseInteraction!='print':
                         plots[view].mlab_source.scalars = plots[view].mlab_source.scalars
                         #self.update_seeds_overlay()
-                        self.update_all_plots(self.seedArr_t,self.plotsSeeds)
+                        import time
+                        ti = time.time()
+                        if hasattr(self,'switch'):
+                            print 'arr'
+                            self.update_all_plots(self.seedArr_t,self.plotsSeeds) 
+                            del(self.switch)
+                        else:
+                            print 'lil'
+                            self.update_all_plots(self.seedLil[self.tindex],self.plotsSeeds)
+                            self.switch=None
+                        print time.time()-ti
                 return mouseClick
             
             plots[view].ipw.add_observer('InteractionEvent', genMC(view))
@@ -562,25 +572,31 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             self.waterArr_t = mahotas.cwatershed(self.arr[t],self.seedArr_t)
             self.updateWaterLilDiff(t)
         self.lastPos=None
-    def update_all_plots(self,arr_t,plots):
+    def update_x_plots(self,arr_t,plots):
         if plots is not {}:
-            plots['XY'].mlab_source.scalars = arr_t[self.zindex]
-            plots['XZ'].mlab_source.scalars = arr_t[:,self.yindex,:]
-            plots['YZ'].mlab_source.scalars = arr_t[:,:,self.xindex].T
-    def update_x_plots(self,arr_t,plots,cursors):
+            if arr_t.__class__==np.ndarray:
+                plots['YZ'].mlab_source.scalars = arr_t[:,:,self.xindex].T
+            elif arr_t.__class__== list:
+                plots['YZ'].mlab_source.scalars = np.array( [ arr_tz[:,self.xindex].toarray().flatten()
+                                                             for arr_tz in arr_t ] ,dtype=np.int32).T
+    def update_y_plots(self,arr_t,plots):
         if plots is not {}:
-            plots['YZ'].mlab_source.scalars = arr_t[:,:,self.xindex].T
-            cursors['x'].mlab_source.set( y=[self.xindex]*2 )
-    def update_y_plots(self,arr_t,plots,cursors):
-        if plots is not {}:
-            plots['XZ'].mlab_source.scalars = arr_t[:,self.yindex,:]
-            cursors['y'].mlab_source.set( x=[self.yindex]*2 )
-    def update_z_plots(self,arr_t,plots,cursors):
+            if arr_t.__class__==np.ndarray:
+                plots['XZ'].mlab_source.scalars = arr_t[:,self.yindex,:]
+            elif arr_t.__class__== list:
+                plots['XZ'].mlab_source.scalars = np.array( [ arr_tz[self.yindex,:].toarray().flatten()
+                                                             for arr_tz in arr_t ] ,dtype=np.int32)
+    def update_z_plots(self,arr_t,plots):
         zs,ys,xs = arr_t.shape
         if plots is not {}:
-            plots['XY'].mlab_source.scalars = arr_t[self.zindex]
-            cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
-            cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
+            if arr_t.__class__==np.ndarray:
+                plots['XY'].mlab_source.scalars = arr_t[self.zindex]
+            elif arr_t.__class__== list:
+                plots['XY'].mlab_source.scalars = arr_t[self.zindex].toarray().astype(np.int32)
+    def update_all_plots(self,arr_t,plots):
+        self.update_x_plots(arr_t,plots)
+        self.update_y_plots(arr_t,plots)
+        self.update_z_plots(arr_t,plots)
     def updateWaterArr_t(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
@@ -590,7 +606,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         if tindex==None:
             tindex=self.tindex
         self.seedArr_t[:] = [ self.seedLil[tindex][z].toarray()
-                          for z in range(self.arr.shape[1]) ]
+                             for z in range(self.arr.shape[1]) ]
     def updateWaterLilDiff(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
@@ -620,20 +636,27 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         self.update_seeds_overlay()
     @on_trait_change('xindex')
     def update_x_plots_cb(self):
-        self.update_x_plots(self.arr[self.tindex],self.plots,self.cursors)
-        self.update_x_plots(self.waterArr_t,self.plotsWater,self.cursorsWater)
-        self.update_x_plots(self.seedArr_t,self.plotsSeeds,self.cursors)
+        self.update_x_plots(self.arr[self.tindex],self.plots)
+        self.update_x_plots(self.waterArr_t,self.plotsWater)
+        self.update_x_plots(self.seedArr_t,self.plotsSeeds)
+        for cursors in [self.cursors,self.cursorsWater]:
+            cursors['x'].mlab_source.set( y=[self.xindex]*2 )
     @on_trait_change('yindex')
     def update_y_plots_cb(self):
         self.update_y_plots(self.arr[self.tindex],self.plots,self.cursors)
         self.update_y_plots(self.waterArr_t,self.plotsWater,self.cursorsWater)
         self.update_y_plots(self.seedArr_t,self.plotsSeeds,self.cursors)
+        for cursors in [self.cursors,self.cursorsWater]:
+            cursors['y'].mlab_source.set( x=[self.yindex]*2 )
     @on_trait_change('zindex')
     def update_z_plots_cb(self):
         self.update_z_plots(self.arr[self.tindex],self.plots,self.cursors)
         self.update_z_plots(self.waterArr_t,self.plotsWater,self.cursorsWater)
         self.update_z_plots(self.seedArr_t,self.plotsSeeds,self.cursors)
-
+        for cursors in [self.cursors,self.cursorsWater]:
+            cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
+            cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
+    
     def GetFileBasenameForSaveLoad(self):
         f = wx.FileSelector()
         # Strip off extensions if present on the file
