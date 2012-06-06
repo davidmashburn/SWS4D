@@ -5,7 +5,7 @@ import scipy.sparse
 
 import wx
 
-from traits.api import HasTraits, Int, Range, String, Bool, Instance, Property, Array, List, Dict, Button, on_trait_change, NO_COMPARE
+from traits.api import HasTraits, Int, Range, String, Float, Bool, Instance, Property, Array, List, Dict, Button, on_trait_change, NO_COMPARE
 from traitsui.api import View, Item, Group, RangeEditor, VGroup, HGroup, VSplit, HSplit, NullEditor
 from mayavi.core.api import PipelineBase
 from mayavi.core.ui.api import MayaviScene, SceneEditor, MlabSceneModel
@@ -65,39 +65,31 @@ class ArrayView4D(HasTraits):
     
     arr = Array(shape=[None]*4)
     scene = Instance(MlabSceneModel, ())
-    plots = Dict()
-    cursors = Dict()
+    plots = List(Dict)
+    cursors = List(Dict)
+    numPlots=Int(1)
+    numCursors=Int(1)
+    
+    cursorSize=Int(2)
+    plotBuf=Int(10)
+    zscale=Float(2.6)
     
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 Group('xindex','yindex','zindex', 'tindex'), resizable=True)
     
-    def __init__(self,arr,cursorSize=2,**traits):
+    def __init__(self,arr,**traits):
         HasTraits.__init__(self,arr=arr,**traits)
-        self.cursors = {'x':None, 'y':None, 'zx':None, 'zy':None}        
-        self.cursorSize = cursorSize
+        self.initPlotsAndCursors()
+    def initPlotsAndCursors(self):
+        for i in range(self.numPlots):
+            self.plots.append( {'XY':None, 'XZ':None, 'YZ':None} )
+        for i in range(self.numCursors):
+            self.cursors.append( {'x':None, 'y':None, 'zx':None, 'zy':None} )
     
-    def display_scene_helper(self,arr,scene,cursors,plots,plotbuf=10,zsc=2.6,skipSceneItems=False,zeroFill=False):
-        if not skipSceneItems:
-            # Interaction properties can only be changed after the scene
-            # has been created, and thus the interactor exists
-            #self.scene.scene.background = (0, 0, 0)
-            
-            # Dumped in favor of ipw mouse stuff
-            #print 'On Mouse Pick'
-            #print self.scene.mayavi_scene._mouse_pick_dispatcher._active_pickers
-            #print self.scene.mayavi_scene.on_mouse_pick(picker_callback)
-            
-            # Set some scene properties
-            scene.scene.interactor.interactor_style = tvtk.InteractorStyleImage()
-            scene.scene.parallel_projection = True
-            scene.scene.anti_aliasing_frames = 0
-            scene.mlab.view(-90, 180)  # Secret sauce to make it line up with the standard imagej orientation
-        
+    def make_plots(self,arr,scene,plots,zeroFill=False):
         # Grab some variables
         xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]        
         arrMin,arrMax = arr.min(),arr.max()
-        self.plotBuffer = plotbuf
-        self.zscale = zsc
         
         # Get the clipped arrays
         xt = arr[self.tindex,:,:,self.xindex].T * (0 if zeroFill else 1)
@@ -128,17 +120,10 @@ class ArrayView4D(HasTraits):
             plots[pList[i]] = pFunc(sList[i],plane_orientation='z_axes',
                                     colormap='gray',vmin=arrMin,vmax=arrMax)
             plots[pList[i]].ipw.left_button_action = 0
-        
-        if not skipSceneItems:
-            # Make the red lines that display the positions of the other 2 views
-            self.MakeCursors(arr,scene,cursors)
-        #else:
-        #    plots['XY'].ipw.origin=1
-        #    plots['XY'].ipw.point1=1
-        #    plots['XY'].ipw.point2=1
-    
-    def MakeCursors(self,arr,scene,cursors):
-        def quickLine(x,y): # pass one list and one value
+        #plots['XY'].ipw.origin=1
+        #plots['XY'].ipw.point1=1
+        #plots['XY'].ipw.point2=1
+    def quickLine(self,x,y): # pass one list and one value
             xl,yl = hasattr(x,'__len__') , hasattr(y,'__len__')
             if (xl and yl) or ((not xl) and (not yl)):
                 print 'Must pass one list and one value!!!'
@@ -150,52 +135,78 @@ class ArrayView4D(HasTraits):
             print x,y
             return scene.mlab.plot3d( x, y, [0.1,0.1], [0.1,0.1], color=(1, 0, 0),
                                        tube_radius=self.cursorSize )
-        
+    def make_cursors(self,arr,scene,cursors):
         xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]
         plotbuf,zsc = self.plotBuffer,self.zscale
         
-        cursors['x']  = quickLine( [-plotbuf-zs*zsc,ys], self.xindex )
-        cursors['y']  = quickLine( self.yindex, [0,plotbuf+xs+zs*zsc] )
-        cursors['zx'] = quickLine( (self.zindex-zs)*zsc - plotbuf, [0,xs] )
-        cursors['zy'] = quickLine( [0,ys], plotbuf+xs+self.zindex*zsc )
+        cursors['x']  = self.quickLine( [-plotbuf-zs*zsc,ys], self.xindex )
+        cursors['y']  = self.quickLine( self.yindex, [0,plotbuf+xs+zs*zsc] )
+        cursors['zx'] = self.quickLine( (self.zindex-zs)*zsc - plotbuf, [0,xs] )
+        cursors['zy'] = self.quickLine( [0,ys], plotbuf+xs+self.zindex*zsc )
+    def display_scene_helper(self,arr,scene,plots,cursors,zeroFill=False):
+        # Interaction properties can only be changed after the scene
+        # has been created, and thus the interactor exists
+        #self.scene.scene.background = (0, 0, 0)
+        
+        # Dumped in favor of ipw mouse stuff
+        #print 'On Mouse Pick'
+        #print self.scene.mayavi_scene._mouse_pick_dispatcher._active_pickers
+        #print self.scene.mayavi_scene.on_mouse_pick(picker_callback)
+        
+        # Set some scene properties
+        scene.scene.interactor.interactor_style = tvtk.InteractorStyleImage()
+        scene.scene.parallel_projection = True
+        scene.scene.anti_aliasing_frames = 0
+        scene.mlab.view(-90, 180)  # Secret sauce to make it line up with the standard imagej orientation
+        
+        # Make the actual plots
+        self.make_plots(arr,plots,zeroFill=zeroFill)
+        # Make the red lines that display the positions of the other 2 views
+        self.make_cursors(arr,scene,cursors)
     
+    def update_x_plots(self,arr,plots):
+        if plots is not {}:
+            plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T
+    def update_y_plots(self,arr,plots):
+        if plots is not {}:
+            plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]
+    def update_z_plots(self,arr,plots):
+        if plots is not {}:
+            plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]
     def update_all_plots(self,arr,plots):
-        if plots is not {}:
-            plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]
-            plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]
-            plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T
-    def update_x_plots(self,arr,plots,cursors):
-        if plots is not {}:
-            plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T
+        self.update_x_plots(arr,plots)
+        self.update_y_plots(arr,plots)
+        self.update_z_plots(arr,plots)
+    def update_x_cursors(self):
+        for cursors in self.cursors:
             cursors['x'].mlab_source.set( y=[self.xindex]*2 )
-    def update_y_plots(self,arr,plots,cursors):
-        if plots is not {}:
-            plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]
+    def update_y_cursors(self):
+        for cursors in self.cursors:
             cursors['y'].mlab_source.set( x=[self.yindex]*2 )
-    def update_z_plots(self,arr,plots,cursors):
-        xs,ys,zs = self.arr.shape[3],self.arr.shape[2],self.arr.shape[1]
-        if plots is not {}:
-            plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]
+    def update_z_cursors(self):
+        for cursors in self.cursors:
             cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
             cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
-    
     @on_trait_change('scene.activated')
     def display_scene(self):
         print 'Scene activated!'
-        self.display_scene_helper(self.arr,self.scene,self.cursors,self.plots)
-    @on_trait_change('tindex')
-    def update_all_plots_cb(self):
-        self.update_all_plots(self.arr,self.plots)
+        self.display_scene_helper(self.arr,self.scene,self.plots[0],self.cursors[0])
     @on_trait_change('xindex')
     def update_x_plots_cb(self):
-        self.update_x_plots(self.arr,self.plots,self.cursors)
+        self.update_x_plots(self.arr,self.plots[0])
+        self.update_x_cursors()
     @on_trait_change('yindex')
     def update_y_plots_cb(self):
-        self.update_y_plots(self.arr,self.plots,self.cursors)
+        self.update_y_plots(self.arr,self.plots[0])
+        self.update_y_cursors()
     @on_trait_change('zindex')
     def update_z_plots_cb(self):
-        self.update_z_plots(self.arr,self.plots,self.cursors)
-
+        self.update_z_plots(self.arr,self.plots[0])
+        self.update_z_cursors()
+    @on_trait_change('tindex')
+    def update_all_plots_cb(self):
+        self.update_all_plots(self.arr,self.plots[0])
+        
 # Same as ArrayView4D but adding vmin and vmax sliders
 class ArrayView4DVminVmax(ArrayView4D):
     minI16 = Int(0)
@@ -206,70 +217,71 @@ class ArrayView4DVminVmax(ArrayView4D):
     # The layout of the dialog created
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 Group('xindex','yindex','zindex', 'tindex', 'vmin', 'vmax'), resizable=True)
-    def display_scene_helper(self,arr,scene,cursors,plots,plotbuf=10,zsc=2.6,skipSceneItems=False,zeroFill=False,updateVminVmax=False):
-        ArrayView4D.display_scene_helper(self,arr,scene,cursors,plots,plotbuf=plotbuf,zsc=zsc,skipSceneItems=skipSceneItems,zeroFill=zeroFill)
+    def display_scene_helper(self,arr,scene,plots,cursors,zeroFill=False,updateVminVmax=False):
+        ArrayView4D.display_scene_helper(self,arr,scene,plots,cursors,zeroFill=zeroFill)
         if updateVminVmax:
             self.vmin,self.vmax = arr.min(),arr.max()
     
     @on_trait_change('scene.activated')
     def display_scene(self):
         print 'Scene activated!'
-        self.display_scene_helper(self.arr,self.scene,self.cursors,self.plots,updateVminVmax=True)
+        self.display_scene_helper(self.arr,self.scene,self.plots[0],self.cursors[0],updateVminVmax=True)
     @on_trait_change('vmin,vmax')
     def UpdateVminVmax(self):
         '''Update the 1st set of plots using the sliders'''
-        if 'XY' in self.plots:
-            self.plots['XY'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
-            self.plots['XZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
-            self.plots['YZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
+        if len(self.plots>0):
+            if 'XY' in self.plots[0]:
+                self.plots[0]['XY'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
+                self.plots[0]['XZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
+                self.plots[0]['YZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
 
 class ArrayView4DDual(ArrayView4DVminVmax):
     arr2 = Array(shape=[None]*4)
     scene2 = Instance(MlabSceneModel, ())
-    plots2 = Dict()
-    cursors2 = Dict()
+    numPlots=Int(2)
+    numCursors=Int(2)
     
     view = View(VGroup(HGroup(
                     Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                     Item('scene2', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 ),
                 Group('xindex','yindex','zindex','tindex','vmin','vmax')), resizable=True)
-    def __init__(self,arr,arr2,cursorSize=2,**traits):
+    def __init__(self,arr,arr2,**traits):
         HasTraits.__init__(self,arr=arr,arr2=arr2,**traits)
-        self.cursors = {'x':None, 'y':None, 'zx':None, 'zy':None}        
-        self.cursors2 = {'x':None, 'y':None, 'zx':None, 'zy':None}
-        self.cursorSize = cursorSize
+        self.initPlotsAndCursors()
     @on_trait_change('scene2.activated')
     def display_scene2(self):
-        self.display_scene_helper(self.arr2,self.scene2,self.cursors2,self.plots2)
-    @on_trait_change('tindex')
-    def update_all_plots_cb(self):
-        self.update_all_plots(self.arr,self.plots)
-        self.update_all_plots(self.arr2,self.plots2)
+        self.display_scene_helper(self.arr2,self.scene2,self.plots[1],self.cursors[1])
     @on_trait_change('xindex')
     def update_x_plots_cb(self):
-        self.update_x_plots(self.arr,self.plots,self.cursors)
-        self.update_x_plots(self.arr2,self.plots2,self.cursors2)
+        self.update_x_plots(self.arr,self.plots[0])
+        self.update_x_plots(self.arr2,self.plots[1])
+        self.update_x_cursors()
     @on_trait_change('yindex')
     def update_y_plots_cb(self):
-        self.update_y_plots(self.arr,self.plots,self.cursors)
-        self.update_y_plots(self.arr2,self.plots2,self.cursors2)
+        self.update_y_plots(self.arr,self.plots[0])
+        self.update_y_plots(self.arr2,self.plots[1])
+        self.update_y_cursors()
     @on_trait_change('zindex')
     def update_z_plots_cb(self):
-        self.update_z_plots(self.arr,self.plots,self.cursors)
-        self.update_z_plots(self.arr2,self.plots2,self.cursors2)
+        self.update_z_plots(self.arr,self.plots[0])
+        self.update_z_plots(self.arr2,self.plots[1])
+        self.update_z_cursors()
+    @on_trait_change('tindex')
+    def update_all_plots_cb(self):
+        self.update_all_plots(self.arr,self.plots[0])
+        self.update_all_plots(self.arr2,self.plots[1])
 
 mouseInteractionModes = ['print','doodle','erase','line','plane']
 
 class SeedWaterSegmenter4D(ArrayView4DVminVmax):
-    waterArr = Array(shape=[None]*4)
     seedArr = Array(shape=[None]*4)
-    
-    plotsWater = Dict()
-    plotsSeeds = Dict()
+    waterArr = Array(shape=[None]*4)
     
     sceneWater = Instance(MlabSceneModel, ())
-    cursorsWater = Dict()
+    
+    numPlots=Int(3)
+    numCursors=Int(2)
     
     nextSeedValue = Range(low=0, high=10000, value=2, exclude_high=False, mode='spinner')
     mouseInteraction = String('line')
@@ -283,30 +295,25 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     
     def __init__(self,arr,waterArr=None,seedArr=None,cursorSize=2,**traits):
         HasTraits.__init__(self,arr=arr,**traits)
+        self.initPlotsAndCursors()
         
         self.waterArr = ( arr*0 if waterArr==None else waterArr )
         self.seedArr = ( arr*0 if seedArr==None else seedArr )
-        self.cursors = {'x':None, 'y':None, 'zx':None, 'zy':None}        
-        self.cursorsWater = {'x':None, 'y':None, 'zx':None, 'zy':None}
-        self.cursorSize = cursorSize
         
         self.lastPos=None
         self.lastPos2=None
-    def display_scene_helper(self,arr,scene,cursors,plots,plotbuf=10,zsc=2.6,skipSceneItems=False,zeroFill=False,updateVminVmax=False):
-        ArrayView4DVminVmax.display_scene_helper(self,arr,scene,cursors,plots,plotbuf=plotbuf,zsc=zsc,skipSceneItems=skipSceneItems,zeroFill=zeroFill,updateVminVmax=updateVminVmax)
-        for s in ('XY','XZ','YZ'):
-            plots[s].mlab_source.scalars = np.array(plots[s].mlab_source.scalars)
-    @on_trait_change('scene.activated')
-    def display_scene(self):
-        self.display_scene_helper(self.arr,self.scene,self.cursors,self.plots)
-        self.display_scene_helper(self.seedArr,self.scene,self.cursors,self.plotsSeeds,skipSceneItems=True)
-        self.AddMouseInteraction(self.plots)
-        self.SetMapPlotColormap(self.plotsSeeds,clearBG=True)
-    @on_trait_change('sceneWater.activated')
-    def display_sceneWater(self):
-        self.display_scene_helper(self.waterArr,self.sceneWater,self.cursorsWater,self.plotsWater)
-        self.SetMapPlotColormap(self.plotsWater)
-        self.AddMouseInteraction(self.plotsWater)
+    def SetMapPlotColormap(self,plots,clearBG=False):
+        '''Secret sauce to display the map plot and make it look like SWS'''
+        from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
+        mapPlotCmap = np.zeros([4,10000],np.int)
+        mapPlotCmap[:3] = GetMapPlotRandomArray()
+        mapPlotCmap[3] = 255
+        if clearBG:
+            mapPlotCmap[3,0] = 0
+        for i in ['XY','XZ','YZ']:
+            plots[i].module_manager.scalar_lut_manager.lut.table = mapPlotCmap.T
+            plots[i].ipw.reslice_interpolate = 'nearest'
+            plots[i].parent.scalar_lut_manager.data_range = 0,10000
     def AddMouseInteraction(self,plots):
         # the heart of the mouse interactions
         for view in ['XY','XZ','YZ']:
@@ -364,84 +371,70 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             
             plots[view].ipw.add_observer('InteractionEvent', genMC(view))
             plots[view].ipw.add_observer('StartInteractionEvent', genMC(view))
-    
     def RunWatershed(self,index='all'):
         tList = ( range(self.arr.shape[0]) if index=='all' else [index] )
         for t in tList:
             self.waterArr[t] = mahotas.cwatershed(self.arr[t],self.seedArr[t])
         
         self.lastPos=None
-    def update_all_plots(self,arr,plots):
-        if plots is not {}:
-            plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]
-            plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]
-            plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T
-    def update_x_plots(self,arr,plots,cursors):
-        if plots is not {}:
-            plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T
-            cursors['x'].mlab_source.set( y=[self.xindex]*2 )
-    def update_y_plots(self,arr,plots,cursors):
-        if plots is not {}:
-            plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]
-            cursors['y'].mlab_source.set( x=[self.yindex]*2 )
-    def update_z_plots(self,arr,plots,cursors):
-        zs,ys,xs = self.arr.shape[1:]
-        if plots is not {}:
-            plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]
-            cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
-            cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
+    @on_trait_change('scene.activated')
+    def display_scene(self):
+        self.display_scene_helper(self.arr,self.scene,self.plots[0],self.cursors[0])
+        self.make_plots(self.seedArr,self.scene,self.plots[1])
+        for plots in self.plots[:2]:
+            for s in ('XY','XZ','YZ'):
+                plots[s].mlab_source.scalars = np.array(plots[s].mlab_source.scalars)
+        self.AddMouseInteraction(self.plots[0])
+        self.SetMapPlotColormap(self.plots[1],clearBG=True)
+    @on_trait_change('sceneWater.activated')
+    def display_sceneWater(self):
+        self.display_scene_helper(self.waterArr,self.sceneWater,self.plots[2],self.cursors[1])
+        for plots in self.plots[2:]:
+            for s in ('XY','XZ','YZ'):
+                plots[s].mlab_source.scalars = np.array(plots[s].mlab_source.scalars)
+        self.SetMapPlotColormap(self.plots[2])
+        self.AddMouseInteraction(self.plots[2])
     @on_trait_change('watershedButton')
     def watershedButtonCallback(self):
         self.RunWatershed(index = self.tindex)
-        self.update_all_plots(self.waterArr,self.plotsWater)
-        self.update_all_plots(self.seedArr,self.plotsSeeds)
+        self.update_all_plots(self.seedArr,self.plots[1])
+        self.update_all_plots(self.waterArr,self.plots[2])
     @on_trait_change('nextSeedValue')
     def resetLine(self):
         self.lastPos = None
-    @on_trait_change('tindex')
-    def update_all_plots_cb(self):
-        self.update_all_plots(self.arr,self.plots)
-        self.update_all_plots(self.waterArr,self.plotsWater)
-        self.update_all_plots(self.seedArr,self.plotsSeeds)
     @on_trait_change('xindex')
     def update_x_plots_cb(self):
-        self.update_x_plots(self.arr,self.plots,self.cursors)
-        self.update_x_plots(self.waterArr,self.plotsWater,self.cursorsWater)
-        self.update_x_plots(self.seedArr,self.plotsSeeds,self.cursors)
+        self.update_x_plots(self.arr,self.plots[0])
+        self.update_x_plots(self.seedArr,self.plots[1])
+        self.update_x_plots(self.waterArr,self.plots[2])
+        self.update_x_cursors()
     @on_trait_change('yindex')
     def update_y_plots_cb(self):
-        self.update_y_plots(self.arr,self.plots,self.cursors)
-        self.update_y_plots(self.waterArr,self.plotsWater,self.cursorsWater)
-        self.update_y_plots(self.seedArr,self.plotsSeeds,self.cursors)
+        self.update_y_plots(self.arr,self.plots[0])
+        self.update_y_plots(self.seedArr,self.plots[1])
+        self.update_y_plots(self.waterArr,self.plots[2])
+        self.update_y_cursors()
     @on_trait_change('zindex')
     def update_z_plots_cb(self):
-        self.update_z_plots(self.arr,self.plots,self.cursors)
-        self.update_z_plots(self.waterArr,self.plotsWater,self.cursorsWater)
-        self.update_z_plots(self.seedArr,self.plotsSeeds,self.cursors)
-
-    def SetMapPlotColormap(self,plots,clearBG=False):
-        '''Secret sauce to display the map plot and make it look like SWS'''
-        from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
-        mapPlotCmap = np.zeros([4,10000],np.int)
-        mapPlotCmap[:3] = GetMapPlotRandomArray()
-        mapPlotCmap[3] = 255
-        if clearBG:
-            mapPlotCmap[3,0] = 0
-        for i in ['XY','XZ','YZ']:
-            plots[i].module_manager.scalar_lut_manager.lut.table = mapPlotCmap.T
-            plots[i].ipw.reslice_interpolate = 'nearest'
-            plots[i].parent.scalar_lut_manager.data_range = 0,10000
+        self.update_z_plots(self.arr,self.plots[0])
+        self.update_z_plots(self.seedArr,self.plots[1])
+        self.update_z_plots(self.waterArr,self.plots[2])
+        self.update_z_cursors()
+    @on_trait_change('tindex')
+    def update_all_plots_cb(self):
+        self.update_all_plots(self.arr,self.plots[0])
+        self.update_all_plots(self.seedArr,self.plots[1])
+        self.update_all_plots(self.waterArr,self.plots[2])
 
 class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     # store the full waterArr and seedArr as cooHD's (actually lil_matrix format) instead
     waterArr_t = Array(shape=[None]*3)
     seedArr_t = Array(shape=[None]*3)
     
-    plotsWater = Dict()
-    plotsSeeds = Dict()
-    
     sceneWater = Instance(MlabSceneModel, ())
-    cursorsWater = Dict()
+    
+    numPlots=Int(3)
+    numCursors=Int(2)
     
     nextSeedValue = Range(low=0, high=10000, value=2, exclude_high=False, mode='spinner')
     mouseInteraction = String('line')
@@ -460,7 +453,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     
     def __init__(self,arr,cursorSize=2,**traits):
         HasTraits.__init__(self,arr=arr,**traits)
-        
+        self.initPlotsAndCursors()
         # Only really store the waterLilDiffs (see coo_utils for conversions to array)
         # This is NOT the same thing as the SWS3D woutline...
         
@@ -472,27 +465,21 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                           for i in range(arr.shape[0]) ]
         self.waterArr_t = np.zeros(arr.shape[1:],dtype=np.int32)
         self.seedArr_t = np.zeros(arr.shape[1:],dtype=np.int32)
-        self.cursors = {'x':None, 'y':None, 'zx':None, 'zy':None}        
-        self.cursorsWater = {'x':None, 'y':None, 'zx':None, 'zy':None}
-        self.cursorSize = cursorSize
         
         self.lastPos=None
         self.lastPos2=None
-    def display_scene_helper(self,arr,scene,cursors,plots,plotbuf=10,zsc=2.6,skipSceneItems=False,zeroFill=False,updateVminVmax=False):
-        ArrayView4DVminVmax.display_scene_helper(self,arr,scene,cursors,plots,plotbuf=plotbuf,zsc=zsc,skipSceneItems=skipSceneItems,zeroFill=zeroFill,updateVminVmax=updateVminVmax)
-        for s in ('XY','XZ','YZ'):
-            plots[s].mlab_source.scalars = np.array(plots[s].mlab_source.scalars)
-    @on_trait_change('scene.activated')
-    def display_scene(self):
-        self.display_scene_helper(self.arr,self.scene,self.cursors,self.plots)
-        self.display_scene_helper(self.arr,self.scene,self.cursors,self.plotsSeeds,skipSceneItems=True,zeroFill=True)
-        self.AddMouseInteraction(self.plots)
-        self.SetMapPlotColormap(self.plotsSeeds,clearBG=True)
-    @on_trait_change('sceneWater.activated')
-    def display_sceneWater(self):
-        self.display_scene_helper(self.arr,self.sceneWater,self.cursorsWater,self.plotsWater,zeroFill=True)
-        self.SetMapPlotColormap(self.plotsWater)
-        self.AddMouseInteraction(self.plotsWater)
+    def SetMapPlotColormap(self,plots,clearBG=False):
+        '''Secret sauce to display the map plot and make it look like SWS'''
+        from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
+        mapPlotCmap = np.zeros([4,10000],np.int)
+        mapPlotCmap[:3] = GetMapPlotRandomArray()
+        mapPlotCmap[3] = 255
+        if clearBG:
+            mapPlotCmap[3,0] = 0
+        for i in ['XY','XZ','YZ']:
+            plots[i].module_manager.scalar_lut_manager.lut.table = mapPlotCmap.T
+            plots[i].ipw.reslice_interpolate = 'nearest'
+            plots[i].parent.scalar_lut_manager.data_range = 0,10000
     def AddMouseInteraction(self,plots):
         # the heart of the mouse interactions
         for view in ['XY','XZ','YZ']:
@@ -553,11 +540,11 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                         ti = time.time()
                         if hasattr(self,'switch'):
                             print 'arr'
-                            self.update_all_plots(self.seedArr_t,self.plotsSeeds) 
+                            self.update_all_plots(self.seedArr_t,self.plots[1]) 
                             del(self.switch)
                         else:
                             print 'lil'
-                            self.update_all_plots(self.seedLil[self.tindex],self.plotsSeeds)
+                            self.update_all_plots(self.seedLil[self.tindex],self.plots[1])
                             self.switch=None
                         print time.time()-ti
                 return mouseClick
@@ -572,6 +559,23 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             self.waterArr_t = mahotas.cwatershed(self.arr[t],self.seedArr_t)
             self.updateWaterLilDiff(t)
         self.lastPos=None
+    @on_trait_change('scene.activated')
+    def display_scene(self):
+        self.display_scene_helper(self.arr,self.scene,self.plots[0],self.cursors[0])
+        self.make_plots(self.arr,self.scene,self.plots[1],zeroFill=True)
+        for plots in self.plots[:2]:
+            for s in ('XY','XZ','YZ'):
+                plots[s].mlab_source.scalars = np.array(plots[s].mlab_source.scalars)
+        self.AddMouseInteraction(self.plots[0])
+        self.SetMapPlotColormap(self.plots[1],clearBG=True)
+    @on_trait_change('sceneWater.activated')
+    def display_sceneWater(self):
+        self.display_scene_helper(self.arr,self.sceneWater,self.plots[2],self.cursors[1],zeroFill=True)
+        for plots in self.plots[2:]:
+            for s in ('XY','XZ','YZ'):
+                plots[s].mlab_source.scalars = np.array(plots[s].mlab_source.scalars)
+        self.SetMapPlotColormap(self.plots[2])
+        self.AddMouseInteraction(self.plots[2])
     def update_x_plots(self,arr_t,plots):
         if plots is not {}:
             if arr_t.__class__==np.ndarray:
@@ -593,10 +597,6 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                 plots['XY'].mlab_source.scalars = arr_t[self.zindex]
             elif arr_t.__class__== list:
                 plots['XY'].mlab_source.scalars = arr_t[self.zindex].toarray().astype(np.int32)
-    def update_all_plots(self,arr_t,plots):
-        self.update_x_plots(arr_t,plots)
-        self.update_y_plots(arr_t,plots)
-        self.update_z_plots(arr_t,plots)
     def updateWaterArr_t(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
@@ -617,8 +617,8 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     def watershedButtonCallback(self):
         self.RunWatershed(index = self.tindex)
         # waterArr_t and seedArr_t are updated in RunWatershed
-        self.update_all_plots(self.waterArr_t,self.plotsWater)
-        self.update_all_plots(self.seedArr_t,self.plotsSeeds)
+        self.update_all_plots(self.seedArr_t,self.plots[1])
+        self.update_all_plots(self.waterArr_t,self.plots[2])
     @on_trait_change('nextSeedValue')
     def resetLine(self):
         self.lastPos = None
@@ -627,35 +627,31 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         import time
         t=time.time()
         self.updateSeedArr_t()
-        self.update_all_plots(self.seedArr_t,self.plotsSeeds)
-    @on_trait_change('tindex')
-    def update_all_plots_cb(self):
-        self.update_all_plots(self.arr[self.tindex],self.plots)
-        self.updateWaterArr_t()
-        self.update_all_plots(self.waterArr_t,self.plotsWater)
-        self.update_seeds_overlay()
+        self.update_all_plots(self.seedArr_t,self.plots[1])
     @on_trait_change('xindex')
     def update_x_plots_cb(self):
-        self.update_x_plots(self.arr[self.tindex],self.plots)
-        self.update_x_plots(self.waterArr_t,self.plotsWater)
-        self.update_x_plots(self.seedArr_t,self.plotsSeeds)
-        for cursors in [self.cursors,self.cursorsWater]:
-            cursors['x'].mlab_source.set( y=[self.xindex]*2 )
+        self.update_x_plots(self.arr[self.tindex],self.plots[0])
+        self.update_x_plots(self.seedArr_t,self.plots[1])
+        self.update_x_plots(self.waterArr_t,self.plots[2])
+        self.update_x_cursors()
     @on_trait_change('yindex')
     def update_y_plots_cb(self):
-        self.update_y_plots(self.arr[self.tindex],self.plots,self.cursors)
-        self.update_y_plots(self.waterArr_t,self.plotsWater,self.cursorsWater)
-        self.update_y_plots(self.seedArr_t,self.plotsSeeds,self.cursors)
-        for cursors in [self.cursors,self.cursorsWater]:
-            cursors['y'].mlab_source.set( x=[self.yindex]*2 )
+        self.update_y_plots(self.arr[self.tindex],self.plots[0])
+        self.update_y_plots(self.seedArr_t,self.plots[1])
+        self.update_y_plots(self.waterArr_t,self.plots[2])
+        self.update_y_cursors()
     @on_trait_change('zindex')
     def update_z_plots_cb(self):
-        self.update_z_plots(self.arr[self.tindex],self.plots,self.cursors)
-        self.update_z_plots(self.waterArr_t,self.plotsWater,self.cursorsWater)
-        self.update_z_plots(self.seedArr_t,self.plotsSeeds,self.cursors)
-        for cursors in [self.cursors,self.cursorsWater]:
-            cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
-            cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
+        self.update_z_plots(self.arr[self.tindex],self.plots[0])
+        self.update_z_plots(self.seedArr_t,self.plots[1])
+        self.update_z_plots(self.waterArr_t,self.plots[2])
+        self.update_z_cursors()
+    @on_trait_change('tindex')
+    def update_all_plots_cb(self):
+        self.update_all_plots(self.arr[self.tindex],self.plots[0])
+        self.update_seeds_overlay()
+        self.updateWaterArr_t()
+        self.update_all_plots(self.waterArr_t,self.plot[2])
     
     def GetFileBasenameForSaveLoad(self):
         f = wx.FileSelector()
@@ -686,18 +682,6 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             self.update_all_plots_cb()
         else:
             wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.arr.shape,shapeWD,shapeS]))
-    def SetMapPlotColormap(self,plots,clearBG=False):
-        '''Secret sauce to display the map plot and make it look like SWS'''
-        from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
-        mapPlotCmap = np.zeros([4,10000],np.int)
-        mapPlotCmap[:3] = GetMapPlotRandomArray()
-        mapPlotCmap[3] = 255
-        if clearBG:
-            mapPlotCmap[3,0] = 0
-        for i in ['XY','XZ','YZ']:
-            plots[i].module_manager.scalar_lut_manager.lut.table = mapPlotCmap.T
-            plots[i].ipw.reslice_interpolate = 'nearest'
-            plots[i].parent.scalar_lut_manager.data_range = 0,10000
 
 class ArrayViewVolume(HasTraits):
     low = Int(0)
