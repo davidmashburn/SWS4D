@@ -65,13 +65,13 @@ class ArrayView4D(HasTraits):
     
     arr = Array(shape=[None]*4)
     scene = Instance(MlabSceneModel, ())
-    plots = List(Dict)
-    cursors = List(Dict)
+    plots = List()
+    cursors = List()
     numPlots=Int(1)
     numCursors=Int(1)
     
     cursorSize=Int(2)
-    plotBuf=Int(10)
+    plotBuffer=Int(10)
     zscale=Float(2.6)
     
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
@@ -89,6 +89,7 @@ class ArrayView4D(HasTraits):
     def make_plots(self,arr,scene,plots,zeroFill=False):
         # Grab some variables
         xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]        
+        plotbuf,zsc = self.plotBuffer,self.zscale
         arrMin,arrMax = arr.min(),arr.max()
         
         # Get the clipped arrays
@@ -113,6 +114,9 @@ class ArrayView4D(HasTraits):
         pFunc = scene.mlab.pipeline.image_plane_widget
         # legacy code in case of switch to image_actor instead of ipw
         #pFunc = scene.mlab.pipeline.image_actor
+        print plots['XY']
+        plots['XY']=1 # Hmph... this list is quite weird...
+        print plots['XY']
         for i in range(3):
             # legacy code in case of switch to image_actor instead of ipw
             #plots(pList[i]) = pFunc(sList[i],interpolate=False,
@@ -123,7 +127,7 @@ class ArrayView4D(HasTraits):
         #plots['XY'].ipw.origin=1
         #plots['XY'].ipw.point1=1
         #plots['XY'].ipw.point2=1
-    def quickLine(self,x,y): # pass one list and one value
+    def quickLine(self,scene,x,y): # pass one list and one value
             xl,yl = hasattr(x,'__len__') , hasattr(y,'__len__')
             if (xl and yl) or ((not xl) and (not yl)):
                 print 'Must pass one list and one value!!!'
@@ -139,10 +143,10 @@ class ArrayView4D(HasTraits):
         xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]
         plotbuf,zsc = self.plotBuffer,self.zscale
         
-        cursors['x']  = self.quickLine( [-plotbuf-zs*zsc,ys], self.xindex )
-        cursors['y']  = self.quickLine( self.yindex, [0,plotbuf+xs+zs*zsc] )
-        cursors['zx'] = self.quickLine( (self.zindex-zs)*zsc - plotbuf, [0,xs] )
-        cursors['zy'] = self.quickLine( [0,ys], plotbuf+xs+self.zindex*zsc )
+        cursors['x']  = self.quickLine( scene, [-plotbuf-zs*zsc,ys], self.xindex )
+        cursors['y']  = self.quickLine( scene, self.yindex, [0,plotbuf+xs+zs*zsc] )
+        cursors['zx'] = self.quickLine( scene, (self.zindex-zs)*zsc - plotbuf, [0,xs] )
+        cursors['zy'] = self.quickLine( scene, [0,ys], plotbuf+xs+self.zindex*zsc )
     def display_scene_helper(self,arr,scene,plots,cursors,zeroFill=False):
         # Interaction properties can only be changed after the scene
         # has been created, and thus the interactor exists
@@ -160,7 +164,7 @@ class ArrayView4D(HasTraits):
         scene.mlab.view(-90, 180)  # Secret sauce to make it line up with the standard imagej orientation
         
         # Make the actual plots
-        self.make_plots(arr,plots,zeroFill=zeroFill)
+        self.make_plots(arr,scene,plots,zeroFill=zeroFill)
         # Make the red lines that display the positions of the other 2 views
         self.make_cursors(arr,scene,cursors)
     
@@ -184,6 +188,7 @@ class ArrayView4D(HasTraits):
         for cursors in self.cursors:
             cursors['y'].mlab_source.set( x=[self.yindex]*2 )
     def update_z_cursors(self):
+        xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]
         for cursors in self.cursors:
             cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
             cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
@@ -229,7 +234,7 @@ class ArrayView4DVminVmax(ArrayView4D):
     @on_trait_change('vmin,vmax')
     def UpdateVminVmax(self):
         '''Update the 1st set of plots using the sliders'''
-        if len(self.plots>0):
+        if len(self.plots)>0:
             if 'XY' in self.plots[0]:
                 self.plots[0]['XY'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
                 self.plots[0]['XZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
@@ -591,7 +596,6 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                 plots['XZ'].mlab_source.scalars = np.array( [ arr_tz[self.yindex,:].toarray().flatten()
                                                              for arr_tz in arr_t ] ,dtype=np.int32)
     def update_z_plots(self,arr_t,plots):
-        zs,ys,xs = arr_t.shape
         if plots is not {}:
             if arr_t.__class__==np.ndarray:
                 plots['XY'].mlab_source.scalars = arr_t[self.zindex]
@@ -651,7 +655,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         self.update_all_plots(self.arr[self.tindex],self.plots[0])
         self.update_seeds_overlay()
         self.updateWaterArr_t()
-        self.update_all_plots(self.waterArr_t,self.plot[2])
+        self.update_all_plots(self.waterArr_t,self.plots[2])
     
     def GetFileBasenameForSaveLoad(self):
         f = wx.FileSelector()
@@ -725,15 +729,20 @@ if __name__=='__main__':
     import testArrays
     arr = testArrays.abb3D
     import GifTiffLoader as GTL
-    numLoad=1
-    name = '/media/home/ViibreData/ActiveData/NewSegmentation/AS Edge Wound Healing/2009SEPT24CellCycle05_W2X/','','2009SEPT24Cell_Cycle05_2X20s.tif'
-    #name = '/home/mashbudn/Documents/VIIBRE--ScarHealing/ActiveData/Resille/2012-04-11/1/Riselle_t','1','.TIF'
+    #numLoad=1
+    #name = '/media/home/ViibreData/ActiveData/NewSegmentation/AS Edge Wound Healing/2009SEPT24CellCycle05_W2X/','','2009SEPT24Cell_Cycle05_2X20s.tif'
+    numLoad=2
+    name = '/home/mashbudn/Documents/VIIBRE--ScarHealing/ActiveData/Resille/2012-04-11/1/Riselle_t','1','.TIF'
     arr0 = GTL.LoadMonolithic(''.join(name))
     arr = np.zeros([numLoad]+list(arr0.shape),dtype=arr0.dtype)
     arr[0] = arr0
     for i in range(1,numLoad):
         arr[i]= GTL.LoadMonolithic(name[0]+str(i+1)+name[2])
     
+    #a = ArrayView4D(arr=arr)
+    #a = ArrayView4DVminVmax(arr=arr)
+    #arr2 = arr//2;arr2[:,:,:10]=0; a = ArrayView4DDual(arr=arr,arr2=arr2)
+    #a = SeedWaterSegmenter4D(arr=arr)
     a = SeedWaterSegmenter4DCompressed(arr=arr)
     #a = ArrayViewVolume(arr=arr)
     a.configure_traits()
