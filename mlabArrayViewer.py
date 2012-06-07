@@ -277,7 +277,7 @@ class ArrayView4DDual(ArrayView4DVminVmax):
         self.update_all_plots(self.arr,self.plots[0])
         self.update_all_plots(self.arr2,self.plots[1])
 
-mouseInteractionModes = ['print','doodle','erase','line','plane']
+mouseInteractionModes = ['print','doodle','erase','line','plane','move']
 
 class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     seedArr = Array(shape=[None]*4)
@@ -338,6 +338,9 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                         return
                     elif self.mouseInteraction=='print':
                         print position,pos
+                    elif self.mouseInteraction=='move':
+                        print self.mouseInteraction,position,pos
+                        self.tindex,self.zindex,self.yindex,self.xindex = pos
                     elif self.mouseInteraction in ['doodle','line','plane']:
                         print self.mouseInteraction,position,pos
                         self.seedArr[pos[0],pos[1],pos[2],pos[3]] = self.nextSeedValue
@@ -433,8 +436,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
 
 class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     # store the full waterArr and seedArr as cooHD's (actually lil_matrix format) instead
-    waterArr_t = Array(shape=[None]*3)
     seedArr_t = Array(shape=[None]*3)
+    waterArr_t = Array(shape=[None]*3)
     
     sceneWater = Instance(MlabSceneModel, ())
     
@@ -442,8 +445,9 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     numCursors=Int(2)
     
     nextSeedValue = Range(low=0, high=10000, value=2, exclude_high=False, mode='spinner')
-    mouseInteraction = String('line')
+    mouseInteraction = String('move')
     watershedButton = Button('Run Watershed')
+    updateSeedArr_tButton = Button('UpdateSeedArr_t')
     saveButton = Button('Save')
     loadButton = Button('Load')
     
@@ -452,7 +456,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                     Item('sceneWater', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
                 ),
                 Group('xindex','yindex','zindex','tindex','vmin','vmax',
-                      'watershedButton','nextSeedValue',
+                      HGroup('watershedButton','nextSeedValue','updateSeedArr_tButton'),
                       HGroup('saveButton','loadButton')
                      )), resizable=True)
     
@@ -470,6 +474,8 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                           for i in range(arr.shape[0]) ]
         self.waterArr_t = np.zeros(arr.shape[1:],dtype=np.int32)
         self.seedArr_t = np.zeros(arr.shape[1:],dtype=np.int32)
+        
+        self.useSeedArr_t=False
         
         self.lastPos=None
         self.lastPos2=None
@@ -504,6 +510,9 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                         return
                     elif self.mouseInteraction=='print':
                         print position,pos
+                    elif self.mouseInteraction=='move':
+                        print self.mouseInteraction,position,pos
+                        self.tindex,self.zindex,self.yindex,self.xindex = pos
                     elif self.mouseInteraction in ['doodle','line','plane']:
                         print self.mouseInteraction,position,pos
                         self.seedLil[pos[0]][pos[1]][pos[2],pos[3]] = self.nextSeedValue
@@ -543,7 +552,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                         #self.update_seeds_overlay()
                         import time
                         ti = time.time()
-                        if hasattr(self,'switch'):
+                        if self.useSeedArr_t:#hasattr(self,'switch'):
                             print 'arr'
                             self.update_all_plots(self.seedArr_t,self.plots[1]) 
                             del(self.switch)
@@ -606,11 +615,13 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             tindex=self.tindex
         self.waterArr_t[:] = [ coo_utils.CooDiffToArray( self.waterLilDiff[tindex][z].toarray() )
                            for z in range(self.arr.shape[1]) ]
+    @on_trait_change('updateSeedArr_tButton')
     def updateSeedArr_t(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
         self.seedArr_t[:] = [ self.seedLil[tindex][z].toarray()
                              for z in range(self.arr.shape[1]) ]
+        self.useSeedArr_t = True
     def updateWaterLilDiff(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
