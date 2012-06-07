@@ -211,7 +211,7 @@ class ArrayView4D(HasTraits):
     @on_trait_change('tindex')
     def update_all_plots_cb(self):
         self.update_all_plots(self.arr,self.plots[0])
-        
+
 # Same as ArrayView4D but adding vmin and vmax sliders
 class ArrayView4DVminVmax(ArrayView4D):
     minI16 = Int(0)
@@ -456,13 +456,15 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     saveButton = Button('Save')
     loadButton = Button('Load')
     
+    tempButton = Button('Temp')
+    
     view = View(VGroup(HGroup(
                     Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
                     Item('sceneWater', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
                 ),
                 Group('xindex','yindex','zindex','tindex','vmin','vmax','mouseInteraction',
                       HGroup('watershedButton','nextSeedValue','updateSeedArr_tButton'),
-                      HGroup('saveButton','loadButton')
+                      HGroup('saveButton','loadButton','tempButton')
                      )), resizable=True)
     
     def __init__(self,arr,cursorSize=2,**traits):
@@ -471,7 +473,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         # Only really store the waterLilDiffs (see coo_utils for conversions to array)
         # This is NOT the same thing as the SWS3D woutline...
         
-        self.waterLilDiff = [ [ scipy.sparse.lil_matrix(arr.shape[2:],dtype=np.uint16)
+        self.waterLilDiff = [ [ scipy.sparse.lil_matrix(arr.shape[2:],dtype=np.int32) # This needs to be able to go negative...
                                for j in range(arr.shape[1]) ]
                              for i in range(arr.shape[0]) ]
         self.seedLil = [ [ scipy.sparse.lil_matrix(arr.shape[2:],dtype=np.uint16)
@@ -621,9 +623,8 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     def updateWaterArr_t(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
-        self.waterArr_t[:] = [ coo_utils.CooDiffToArray( self.waterLilDiff[tindex][z].toarray() )
+        self.waterArr_t[:] = [ coo_utils.CooDiffToArray( self.waterLilDiff[tindex][z].toarray() ).astype(np.uint16)
                               for z in range(self.arr.shape[1]) ]
-    @on_trait_change('updateSeedArr_tButton')
     def updateSeedArr_t(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
@@ -633,8 +634,13 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     def updateWaterLilDiff(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
-        self.waterLilDiff[tindex] = [ scipy.sparse.lil_matrix(coo_utils.ArrayToCooDiff(self.waterArr_t[z]),dtype=np.uint16)
+        self.waterLilDiff[tindex] = [ scipy.sparse.lil_matrix(coo_utils.ArrayToCooDiff(self.waterArr_t[z]),dtype=np.int32)
                                      for z in range(self.arr.shape[1]) ]
+    def update_seeds_overlay(self):
+        import time
+        t=time.time()
+        self.updateSeedArr_t()
+        self.update_all_plots(self.seedArr_t,self.plots[1])
     @on_trait_change('updateSeedArr_tButton')
     def updateSeedArr_tCallback(self,tindex=None):
         self.update_seeds_overlay()
@@ -649,11 +655,9 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     @on_trait_change('nextSeedValue')
     def resetLine(self):
         self.lastPos = None
-    def update_seeds_overlay(self):
-        import time
-        t=time.time()
-        self.updateSeedArr_t()
-        self.update_all_plots(self.seedArr_t,self.plots[1])
+    @on_trait_change('mouseInteraction')
+    def mouseInteractionChanged(self):
+        self.lastPos=None
     @on_trait_change('xindex')
     def update_x_plots_cb(self):
         self.update_x_plots(self.arr[self.tindex],self.plots[0])
@@ -716,13 +720,18 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         shapeWD = coo_utils.GetShapeFromFile( f+'_waterDiff' )
         shapeS = coo_utils.GetShapeFromFile( f+'_seeds' )
         if self.arr.shape == shapeWD == shapeS:
-            shapeWD, self.waterLilDiff = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
-            shapeS, self.seedLil = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
+            shapeWD, self.waterLilDiff[:] = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
+            shapeS, self.seedLil[:] = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
             self.updateSeedArr_t()
             self.updateWaterArr_t()
             self.update_all_plots_cb()
         else:
             wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.arr.shape,shapeWD,shapeS]))
+    @on_trait_change('tempButton')
+    def OnTemp(self):
+        print 'For testing stuff...'
+        print self.waterLilDiff[0][0].dtype
+    
 
 class ArrayViewVolume(HasTraits):
     low = Int(0)
