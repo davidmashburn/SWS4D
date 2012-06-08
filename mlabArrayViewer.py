@@ -523,25 +523,27 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                     elif self.mouseInteraction in ['doodle','line','plane']:
                         print self.mouseInteraction,position,pos
                         self.seedLil[pos[0]][pos[1]][pos[2],pos[3]] = self.nextSeedValue
+                        self.seedArr_t[pos[1],pos[2],pos[3]] = self.nextSeedValue
                         #self.plots['XY'].mlab_source.scalars[pos[0],pos[1]] = self.nextSeedValue
                         
                         if self.lastPos!=None:
                             if self.mouseInteraction == 'line':
-                                points = np.array(BresenhamFunction(pos,self.lastPos))
+                                points = BresenhamFunction(pos,self.lastPos)
                             elif self.mouseInteraction == 'plane':
-                                planepoints = BresenhamTriangle(pos,self.lastPos,self.lastPos2)
-                                points = []
-                                for p in planepoints:
-                                    #if 0<=p[2]<self.arr.shape[1]-1 and 0<=p[0]<self.arr.shape[2]-1 and 0<=p[1]<self.arr.shape[3]-1:
-                                    if 0<=p[0]<self.arr.shape[0]-1 and 0<=p[1]<self.arr.shape[1]-1 and 0<=p[2]<self.arr.shape[2]-1 and 0<=p[2]<self.arr.shape[2]-1:
-                                        for i in range(2):
-                                            for j in range(2):
-                                                #for k in range(2): # Lose the z fiddle... too confusing
-                                                    #points.append((p[0]+i,p[1]+j,p[2]+k))
-                                                    points.append((p[0]+i,p[1]+j,p[2],p[3]))
-                                points = np.array(list(set(points)))
+                                points = BresenhamTriangle(pos,self.lastPos,self.lastPos2)
                             else:
                                 points=[]
+                            
+                            pointsExp = []
+                            for p in points:
+                                #if 0<=p[2]<self.arr.shape[1]-1 and 0<=p[0]<self.arr.shape[2]-1 and 0<=p[1]<self.arr.shape[3]-1:
+                                if 0<=p[0]<self.arr.shape[0] and 0<=p[1]<self.arr.shape[1] and 0<=p[2]<self.arr.shape[2]-1 and 0<=p[2]<self.arr.shape[2]-1:
+                                    for i in range(2):
+                                        for j in range(2):
+                                            #for k in range(2): # Lose the z fiddle... too confusing
+                                                #points.append((p[0]+i,p[1]+j,p[2]+k))
+                                                pointsExp.append((p[0],p[1],p[2]+i,p[3]+j))
+                            points = np.array(list(set(pointsExp)))
                             
                             #self.seedArr[self.tindex,points[:,2],points[:,0],points[:,1]] = self.nextSeedValue
                             for p in points:
@@ -620,6 +622,9 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                 plots['XY'].mlab_source.scalars = arr_t[self.zindex]
             elif arr_t.__class__== list:
                 plots['XY'].mlab_source.scalars = arr_t[self.zindex].toarray().astype(np.int32)
+    def getWaterArr_t_z(self):
+        # This should be the inner function in updateWaterArr_t
+        return coo_utils.CooDiffToArray( self.waterLilDiff[self.tindex][self.zindex].toarray() ).astype(np.uint16)
     def updateWaterArr_t(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
@@ -666,6 +671,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             self.update_x_plots(self.waterArr_t,self.plots[2])
         else:
             self.update_x_plots(self.seedLil[self.tindex],self.plots[1])
+            
         self.update_x_cursors()
     @on_trait_change('yindex')
     def update_y_plots_cb(self):
@@ -684,12 +690,25 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             self.update_z_plots(self.waterArr_t,self.plots[2])
         else:
             self.update_z_plots(self.seedLil[self.tindex],self.plots[1])
+            
+            # This is quirky, but it should work ok...
+            # good compromise...certainly a lot faster!!!
+            self.plots[2]['XY'].mlab_source.scalars = self.getWaterArr_t_z()
+            self.plots[2]['XZ'].mlab_source.scalars *= 0
+            self.plots[2]['YZ'].mlab_source.scalars *= 0
         self.update_z_cursors()
     @on_trait_change('tindex')
     def update_all_plots_cb(self):
         self.update_all_plots(self.arr[self.tindex],self.plots[0])
         self.useSeedArr_t=False
         self.update_all_plots(self.seedLil[self.tindex],self.plots[1])
+        
+        # This is quirky, but it should work ok...
+        # good compromise...certainly a lot faster!!!
+        self.plots[2]['XY'].mlab_source.scalars = self.getWaterArr_t_z()
+        self.plots[2]['XZ'].mlab_source.scalars *= 0
+        self.plots[2]['YZ'].mlab_source.scalars *= 0
+        
         
         # Meh, just skip updating the watershed part for speed in editing the seeds...
         # Seriously, how hard is it to push the button
