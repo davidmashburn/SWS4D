@@ -387,6 +387,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         tList = ( range(self.arr.shape[0]) if index=='all' else [index] )
         for t in tList:
             self.waterArr[t] = mahotas.cwatershed(self.arr[t],self.seedArr[t])
+            print 'Watershed on frame',t
         
         self.lastPos=None
     @on_trait_change('scene.activated')
@@ -584,6 +585,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             self.updateSeedArr_t(t)
             self.waterArr_t = mahotas.cwatershed(self.arr[t],self.seedArr_t)
             self.updateWaterLilDiff(t)
+            print 'Watershed on frame',t
         self.lastPos=None
     @on_trait_change('scene.activated')
     def display_scene(self):
@@ -783,7 +785,7 @@ class ArrayViewVolume(HasTraits):
     
     @on_trait_change('tindex')
     def update_plot(self):
-        self.vPlot.mlab_source.scalars = self.arr[self.tindex]
+        self.vPlot.mlab_source.scalars = self.arr[self.tindex].transpose()
 
 
 if __name__=='__main__':
