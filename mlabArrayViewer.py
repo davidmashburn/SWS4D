@@ -487,6 +487,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     mouseInteraction=Enum(mouseInteractionModes)
     watershedButton = Button('Run Watershed')
     #updateSeedArr_tButton = Button('UpdateSeedArr_t')
+    volumeRenderButton = Button('VolumeRender')
     saveButton = Button('Save')
     loadButton = Button('Load')
     
@@ -497,7 +498,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                     Item('sceneWater', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
                 ),
                 Group('xindex','yindex','zindex','tindex','vmin','vmax','mouseInteraction',
-                      HGroup('watershedButton','nextSeedValue'),#'updateSeedArr_tButton'),
+                      HGroup('watershedButton','nextSeedValue','volumeRenderButton'),#'updateSeedArr_tButton'),
                       HGroup('saveButton','loadButton','tempButton')
                      )), resizable=True)
     
@@ -670,7 +671,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     def getSeedArr_t(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
-        return [ self.seedLil[tindex][z].toarray() for z in range(self.arr.shape[1]) ]
+        return np.array( [ self.seedLil[tindex][z].toarray() for z in range(self.arr.shape[1]) ] , dtype=np.int32)
         #self.useSeedArr_t = True
     def updateWaterLilDiff(self,tindex=None):
         if tindex==None:
@@ -781,10 +782,29 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             self.update_all_plots_cb()
         else:
             wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.arr.shape,shapeWD,shapeS]))
+    
+    def GetSubArray(self,val):
+        wh = np.where(self.waterArr==val)
+        zmin,zmax = min(wh[1]),max(wh[1])
+        ymin,ymax = min(wh[2]),max(wh[2])
+        xmin,xmax = min(wh[3]),max(wh[3])
+        return (self.waterArr[:,zmin:zmax+1,ymin:ymax+1,xmin:xmax+1]==val).astype(np.int32)
+    
+    @on_trait_change('volumeRenderButton')
+    def OnVolumeRender(self):
+        if self.nextSeedValue<2:
+            wx.MessageBox('Set "Next seed value" to 2 or higher to render the volume for that region.')
+            return
+        subArr = self.GetSubArray(self.nextSeedValue)
+        vol = ArrayViewVolume(arr=subArr)
+        vol.configure_traits()
+        
     @on_trait_change('tempButton')
     def OnTemp(self):
         print 'For testing stuff...'
         print self.waterLilDiff[0][0].dtype
+        
+        
 
 if __name__=='__main__':
     arr = np.array([ [[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[1,2,3,4],[5,6,7,8],[9,10,11,12]]], [[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[1,2,3,4],[5,6,7,8],[9,10,11,12]]] ])
