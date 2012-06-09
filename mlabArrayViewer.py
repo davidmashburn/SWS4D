@@ -38,6 +38,39 @@ import coo_utils
 #                                 y=y[x_, y_],
 #                                 z=z[x_, y_])
 
+class ArrayViewVolume(HasTraits):
+    low = Int(0)
+    tlength = Property(depends_on=['arr'])
+    def _get_tlength(self):
+        return self.arr.shape[0]-1
+    tindex = Range(low='low', high='tlength', value=0, exclude_high=False, mode='slider') # or spinner
+    zscale = Int(2.6)
+    
+    arr = Array(shape=[None]*4)
+    
+    scene = Instance(MlabSceneModel, ())
+    
+    vPlot = Instance(PipelineBase)
+    
+    # The layout of the dialog created
+    view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
+                Group('tindex'), resizable=True)
+    
+    def __init__(self,arr,vmin=None,vmax=None,**traits):
+        HasTraits.__init__(self,arr=arr,**traits) # Call __init__ on the super
+        self.vmin = (arr.min() if vmin==None else vmin)
+        self.vmax = (arr.max() if vmax==None else vmax)
+    
+    @on_trait_change('scene.activated')
+    def make_plot(self):
+        x,y,z = np.mgrid[:self.arr.shape[3],:self.arr.shape[2],:self.arr.shape[1]]
+        z*=self.zscale
+        self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(x,y,z,self.arr[self.tindex].transpose()), vmin=self.vmin, vmax=self.vmax)
+    
+    @on_trait_change('tindex')
+    def update_plot(self):
+        self.vPlot.mlab_source.scalars = self.arr[self.tindex].transpose()
+
 # This class is the heart of the code; in fact, it contains 90% of what
 # is needed for ArrayView4DDual as well.
 
@@ -442,7 +475,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
 class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     # store the full waterArr and seedArr as cooHD's (actually lil_matrix format) instead
     #seedArr_t = Array(shape=[None]*3)
-    waterArr = Array(shape=[None]*3)
+    waterArr = Array(shape=[None]*4)
     
     sceneWater = Instance(MlabSceneModel, ())
     
@@ -703,7 +736,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         self.update_all_plots(self.arr[self.tindex],self.plots[0])
         #self.useSeedArr_t=False
         self.update_all_plots(self.seedLil[self.tindex],self.plots[1])
-        self.update_all_plots(self.waterArr[self.tindex],self.plots[1])
+        self.update_all_plots(self.waterArr[self.tindex],self.plots[2])
         
         # This is quirky, but it should work ok...
         # good compromise...certainly a lot faster!!!
@@ -752,41 +785,6 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     def OnTemp(self):
         print 'For testing stuff...'
         print self.waterLilDiff[0][0].dtype
-    
-
-class ArrayViewVolume(HasTraits):
-    low = Int(0)
-    tlength = Property(depends_on=['arr'])
-    def _get_tlength(self):
-        return self.arr.shape[0]-1
-    tindex = Range(low='low', high='tlength', value=0, exclude_high=False, mode='slider') # or spinner
-    zscale = Int(2.6)
-    
-    arr = Array(shape=[None]*4)
-    
-    scene = Instance(MlabSceneModel, ())
-    
-    vPlot = Instance(PipelineBase)
-    
-    # The layout of the dialog created
-    view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
-                Group('tindex'), resizable=True)
-    
-    def __init__(self,arr,vmin=None,vmax=None,**traits):
-        HasTraits.__init__(self,arr=arr,**traits) # Call __init__ on the super
-        self.vmin = (arr.min() if vmin==None else vmin)
-        self.vmax = (arr.max() if vmax==None else vmax)
-    
-    @on_trait_change('scene.activated')
-    def make_plot(self):
-        x,y,z = np.mgrid[:self.arr.shape[3],:self.arr.shape[2],:self.arr.shape[1]]
-        z*=self.zscale
-        self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(x,y,z,self.arr[self.tindex].transpose()), vmin=self.vmin, vmax=self.vmax)
-    
-    @on_trait_change('tindex')
-    def update_plot(self):
-        self.vPlot.mlab_source.scalars = self.arr[self.tindex].transpose()
-
 
 if __name__=='__main__':
     arr = np.array([ [[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[1,2,3,4],[5,6,7,8],[9,10,11,12]]], [[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[1,2,3,4],[5,6,7,8],[9,10,11,12]]] ])
