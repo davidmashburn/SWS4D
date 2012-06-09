@@ -442,7 +442,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
 class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     # store the full waterArr and seedArr as cooHD's (actually lil_matrix format) instead
     seedArr_t = Array(shape=[None]*3)
-    waterArr_t = Array(shape=[None]*3)
+    waterArr = Array(shape=[None]*3)
     
     sceneWater = Instance(MlabSceneModel, ())
     
@@ -453,7 +453,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     #mouseInteraction = String('move')
     mouseInteraction=Enum(mouseInteractionModes)
     watershedButton = Button('Run Watershed')
-    updateSeedArr_tButton = Button('UpdateSeedArr_t')
+    #updateSeedArr_tButton = Button('UpdateSeedArr_t')
     saveButton = Button('Save')
     loadButton = Button('Load')
     
@@ -464,7 +464,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                     Item('sceneWater', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
                 ),
                 Group('xindex','yindex','zindex','tindex','vmin','vmax','mouseInteraction',
-                      HGroup('watershedButton','nextSeedValue','updateSeedArr_tButton'),
+                      HGroup('watershedButton','nextSeedValue'),#'updateSeedArr_tButton'),
                       HGroup('saveButton','loadButton','tempButton')
                      )), resizable=True)
     
@@ -480,7 +480,8 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         self.seedLil = [ [ scipy.sparse.lil_matrix(arr.shape[2:],dtype=np.uint16)
                             for j in range(arr.shape[1]) ]
                           for i in range(arr.shape[0]) ]
-        self.waterArr_t = np.zeros(arr.shape[1:],dtype=np.int32)
+        
+        self.waterArr = np.zeros(arr.shape,dtype=np.int32)
         self.seedArr_t = np.zeros(arr.shape[1:],dtype=np.int32)
         
         self.useSeedArr_t=False
@@ -583,7 +584,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         tList = ( range(self.arr.shape[0]) if index=='all' else [index] )
         for t in tList:
             self.updateSeedArr_t(t)
-            self.waterArr_t = mahotas.cwatershed(self.arr[t],self.seedArr_t)
+            self.waterArr[t] = mahotas.cwatershed(self.arr[t],self.seedArr_t)
             self.updateWaterLilDiff(t)
             print 'Watershed on frame',t
         self.lastPos=None
@@ -624,14 +625,13 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                 plots['XY'].mlab_source.scalars = arr_t[self.zindex]
             elif arr_t.__class__== list:
                 plots['XY'].mlab_source.scalars = arr_t[self.zindex].toarray().astype(np.int32)
-    def getWaterArr_t_z(self):
-        # This should be the inner function in updateWaterArr_t
-        return coo_utils.CooDiffToArray( self.waterLilDiff[self.tindex][self.zindex].toarray() ).astype(np.uint16)
-    def updateWaterArr_t(self,tindex=None):
-        if tindex==None:
-            tindex=self.tindex
-        self.waterArr_t[:] = [ coo_utils.CooDiffToArray( self.waterLilDiff[tindex][z].toarray() ).astype(np.uint16)
-                              for z in range(self.arr.shape[1]) ]
+    #def getWaterArr_t_z(self):
+    #    # This should be the inner function in updateWaterArr_t
+    #    return coo_utils.CooDiffToArray( self.waterLilDiff[self.tindex][self.zindex].toarray() ).astype(np.uint16)
+    def updateWaterArr(self):
+        for t in range(self.arr.shape[0]):
+            self.waterArr[t] = [ coo_utils.CooDiffToArray( self.waterLilDiff[t][z].toarray() ).astype(np.uint16)
+                                for z in range(self.arr.shape[1]) ]
     def updateSeedArr_t(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
@@ -641,24 +641,24 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     def updateWaterLilDiff(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
-        self.waterLilDiff[tindex] = [ scipy.sparse.lil_matrix(coo_utils.ArrayToCooDiff(self.waterArr_t[z]),dtype=np.int32)
+        self.waterLilDiff[tindex] = [ scipy.sparse.lil_matrix(coo_utils.ArrayToCooDiff(self.waterArr[tindex][z]),dtype=np.int32)
                                      for z in range(self.arr.shape[1]) ]
     def update_seeds_overlay(self):
         import time
         t=time.time()
         self.updateSeedArr_t()
         self.update_all_plots(self.seedArr_t,self.plots[1])
-    @on_trait_change('updateSeedArr_tButton')
-    def updateSeedArr_tCallback(self,tindex=None):
-        self.update_seeds_overlay()
-        self.updateWaterArr_t()
-        self.update_all_plots(self.waterArr_t,self.plots[2])
+    #@on_trait_change('updateSeedArr_tButton')
+    #def updateSeedArr_tCallback(self,tindex=None):
+    #    self.update_seeds_overlay()
+    #    self.updateWaterArr_t()
+    #    self.update_all_plots(self.waterArr_t,self.plots[2])
     @on_trait_change('watershedButton')
     def watershedButtonCallback(self):
         self.RunWatershed(index = self.tindex)
         # waterArr_t and seedArr_t are updated in RunWatershed
         self.update_all_plots(self.seedArr_t,self.plots[1])
-        self.update_all_plots(self.waterArr_t,self.plots[2])
+        self.update_all_plots(self.waterArr[self.tindex],self.plots[2])
     @on_trait_change('nextSeedValue')
     def resetLine(self):
         self.lastPos = None
@@ -670,46 +670,45 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         self.update_x_plots(self.arr[self.tindex],self.plots[0])
         if self.useSeedArr_t:
             self.update_x_plots(self.seedArr_t,self.plots[1])
-            self.update_x_plots(self.waterArr_t,self.plots[2])
         else:
             self.update_x_plots(self.seedLil[self.tindex],self.plots[1])
-            
+        self.update_x_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_x_cursors()
     @on_trait_change('yindex')
     def update_y_plots_cb(self):
         self.update_y_plots(self.arr[self.tindex],self.plots[0])
         if self.useSeedArr_t:
             self.update_y_plots(self.seedArr_t,self.plots[1])
-            self.update_y_plots(self.waterArr_t,self.plots[2])
         else:
             self.update_y_plots(self.seedLil[self.tindex],self.plots[1])
+        self.update_y_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_y_cursors()
     @on_trait_change('zindex')
     def update_z_plots_cb(self):
         self.update_z_plots(self.arr[self.tindex],self.plots[0])
         if self.useSeedArr_t:
             self.update_z_plots(self.seedArr_t,self.plots[1])
-            self.update_z_plots(self.waterArr_t,self.plots[2])
         else:
             self.update_z_plots(self.seedLil[self.tindex],self.plots[1])
-            
             # This is quirky, but it should work ok...
             # good compromise...certainly a lot faster!!!
-            self.plots[2]['XY'].mlab_source.scalars = self.getWaterArr_t_z()
-            self.plots[2]['XZ'].mlab_source.scalars *= 0
-            self.plots[2]['YZ'].mlab_source.scalars *= 0
+            #self.plots[2]['XY'].mlab_source.scalars = self.getWaterArr_t_z()
+            #self.plots[2]['XZ'].mlab_source.scalars *= 0
+            #self.plots[2]['YZ'].mlab_source.scalars *= 0
+        self.update_z_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_z_cursors()
     @on_trait_change('tindex')
     def update_all_plots_cb(self):
         self.update_all_plots(self.arr[self.tindex],self.plots[0])
         self.useSeedArr_t=False
         self.update_all_plots(self.seedLil[self.tindex],self.plots[1])
+        self.update_all_plots(self.waterArr[self.tindex],self.plots[1])
         
         # This is quirky, but it should work ok...
         # good compromise...certainly a lot faster!!!
-        self.plots[2]['XY'].mlab_source.scalars = self.getWaterArr_t_z()
-        self.plots[2]['XZ'].mlab_source.scalars *= 0
-        self.plots[2]['YZ'].mlab_source.scalars *= 0
+        #self.plots[2]['XY'].mlab_source.scalars = self.getWaterArr_t_z()
+        #self.plots[2]['XZ'].mlab_source.scalars *= 0
+        #self.plots[2]['YZ'].mlab_source.scalars *= 0
         
         
         # Meh, just skip updating the watershed part for speed in editing the seeds...
@@ -744,7 +743,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             shapeWD, self.waterLilDiff[:] = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
             shapeS, self.seedLil[:] = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
             self.updateSeedArr_t()
-            self.updateWaterArr_t()
+            self.updateWaterArr()
             self.update_all_plots_cb()
         else:
             wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.arr.shape,shapeWD,shapeS]))
