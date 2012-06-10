@@ -119,7 +119,7 @@ class ArrayView4D(HasTraits):
         for i in range(self.numCursors):
             self.cursors.append( {'x':None, 'y':None, 'zx':None, 'zy':None} )
     
-    def make_plots(self,arr,scene,plots,zeroFill=False):
+    def make_plots(self,arr,scene,plots,zeroFill=False,useSurf=False):
         # Grab some variables
         xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]        
         plotbuf,zsc = self.plotBuffer,self.zscale
@@ -154,9 +154,12 @@ class ArrayView4D(HasTraits):
             # legacy code in case of switch to image_actor instead of ipw
             #plots(pList[i]) = pFunc(sList[i],interpolate=False,
             #                        colormap='gray',vmin=arrMin,vmax=arrMax) )
-            plots[pList[i]] = pFunc(sList[i],plane_orientation='z_axes',
-                                    colormap='gray',vmin=arrMin,vmax=arrMax)
-            plots[pList[i]].ipw.left_button_action = 0
+            if useSurf:
+                plots[pList[i]] = scene.mlab.pipeline.surface(sList[i])
+            else:
+                plots[pList[i]] = pFunc(sList[i],plane_orientation='z_axes',
+                                        colormap='gray',vmin=arrMin,vmax=arrMax)
+                plots[pList[i]].ipw.left_button_action = 0
         #plots['XY'].ipw.origin=1
         #plots['XY'].ipw.point1=1
         #plots['XY'].ipw.point2=1
@@ -482,6 +485,8 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     numPlots=Int(3)
     numCursors=Int(2)
     
+    overlayOpacity=Range(low=0.0, high=1.0, value=1.0)
+    
     nextSeedValue = Range(low=0, high=10000, value=2, exclude_high=False, mode='spinner')
     #mouseInteraction = String('move')
     mouseInteraction=Enum(mouseInteractionModes)
@@ -497,7 +502,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                     Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
                     Item('sceneWater', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
                 ),
-                Group('xindex','yindex','zindex','tindex','vmin','vmax','mouseInteraction',
+                Group('xindex','yindex','zindex','tindex','vmin','vmax','overlayOpacity','mouseInteraction',
                       HGroup('watershedButton','nextSeedValue','volumeRenderButton'),#'updateSeedArr_tButton'),
                       HGroup('saveButton','loadButton','tempButton')
                      )), resizable=True)
@@ -633,55 +638,13 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         self.AddMouseInteraction(self.plots[0])
         self.SetMapPlotColormap(self.plots[1],clearBG=True)
         
-        
-        arr=self.waterArr
-        scene=self.scene
-        zeroFill=False
-        ## MAKE A CONTOUR:
-        xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]        
-        plotbuf,zsc = self.plotBuffer,self.zscale
-        arrMin,arrMax = arr.min(),arr.max()
-        
-        # Get the clipped arrays
-        xt = arr[self.tindex,:,:,self.xindex].T * (0 if zeroFill else 1)
-        yt = arr[self.tindex,:,self.yindex]     * (0 if zeroFill else 1)
-        zt = arr[self.tindex,self.zindex]       * (0 if zeroFill else 1)
-        
-        # Make the 3 array_2d_scources in the pipeline; tell it not to compare
-        # so array self-copy will notify traits (see AddMouseInteraction)
-        x,y = np.ogrid[:ys,:xs]
-        sXY = scene.mlab.pipeline.array2d_source(x,y,zt,comparison_mode=NO_COMPARE)
-        #x,y = np.ogrid[ ys+plotbuf : ys+plotbuf+zsc*zs : zsc  ,  :xs ] # right
-        x,y = np.ogrid[ 1-zsc*zs-plotbuf:1-plotbuf:zsc  ,  :xs ] # left
-        sXZ = scene.mlab.pipeline.array2d_source(x,y,yt,comparison_mode=NO_COMPARE)
-        x,y = np.ogrid[ :ys  ,  xs+plotbuf : xs+plotbuf+zsc*zs : zsc ] # top
-        #x,y = np.ogrid[ :ys  ,  -zsc*zs-plotbuf : 1-plotbuf : zsc ] # bottom
-        sYZ = scene.mlab.pipeline.array2d_source(x,y,xt,comparison_mode=NO_COMPARE)
-        
-        '''
-        # Generate the 3 Image Plane Widgets (or Image Actors)
-        sList = [sXY,sXZ,sYZ]
-        pList = ['XY','XZ','YZ']
-        pFunc = scene.mlab.pipeline.image_plane_widget
-        # legacy code in case of switch to image_actor instead of ipw
-        #pFunc = scene.mlab.pipeline.image_actor
-        print plots['XY']
-        plots['XY']=1 # Hmph... this list is quite weird...
-        print plots['XY']
-        for i in range(3):
-            # legacy code in case of switch to image_actor instead of ipw
-            #plots(pList[i]) = pFunc(sList[i],interpolate=False,
-            #                        colormap='gray',vmin=arrMin,vmax=arrMax) )
-            plots[pList[i]] = pFunc(sList[i],plane_orientation='z_axes',
-                                    colormap='gray',vmin=arrMin,vmax=arrMax)
-            plots[pList[i]].ipw.left_button_action = 0
-        '''
-        
-        self.contour = scene.mlab.pipeline.surface(sXY)
-        self.contour.enable_contours=True
-        self.contour.contour.auto_contours=False
-        self.contour.contour.contours=[0.5]
-        
+        # Try this instead
+        self.contours = {'XY':None,'XZ':None,'YZ':None}
+        self.make_plots(self.waterArr,self.scene,self.contours,useSurf=True)
+        for i in ['XY','XZ','YZ']:
+            self.contours[i].enable_contours=True
+            self.contours[i].contour.auto_contours=False
+            self.contours[i].contour.contours=[0.5]
     @on_trait_change('sceneWater.activated')
     def display_sceneWater(self):
         self.display_scene_helper(self.arr,self.sceneWater,self.plots[2],self.cursors[1],zeroFill=True)
@@ -738,18 +701,43 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     #    self.update_seeds_overlay()
     #    self.updateWaterArr_t()
     #    self.update_all_plots(self.waterArr_t,self.plots[2])
+    @on_trait_change('overlayOpacity')
+    def overlayOpacityCallback(self):
+        for s in ['XY','XZ','YZ']:
+            self.plots[1][s].ipw.texture_visibility = (self.overlayOpacity>0)
+            self.contours[s].actor.property.opacity = self.overlayOpacity
     @on_trait_change('watershedButton')
     def watershedButtonCallback(self):
         self.RunWatershed(index = self.tindex)
         # waterArr_t and seedArr_t are updated in RunWatershed
         self.update_all_plots(self.seedLil[self.tindex],self.plots[1])
         self.update_all_plots(self.waterArr[self.tindex],self.plots[2])
+        self.update_all_contours()
     @on_trait_change('nextSeedValue')
     def resetLine(self):
         self.lastPos = None
+        self.update_all_contours()
     @on_trait_change('mouseInteraction')
     def mouseInteractionChanged(self):
         self.lastPos=None
+    def contourHelper(self,arr,xyzStr):
+        self.contours[xyzStr].mlab_source.scalars = arr.astype(np.int32)
+        self.contours[xyzStr].enable_contours=True
+        self.contours[xyzStr].contour.auto_contours=False
+        self.contours[xyzStr].contour.contours=[0.5]
+    def update_x_contours(self):
+        arr = (self.waterArr[self.tindex,:,:,self.xindex].T==self.nextSeedValue)
+        self.contourHelper(arr,'YZ')
+    def update_y_contours(self):
+        arr = (self.waterArr[self.tindex,:,self.yindex]==self.nextSeedValue)
+        self.contourHelper(arr,'XZ')
+    def update_z_contours(self):
+        arr = (self.waterArr[self.tindex,self.zindex]==self.nextSeedValue)
+        self.contourHelper(arr,'XY')
+    def update_all_contours(self):
+        self.update_x_contours()
+        self.update_y_contours()
+        self.update_z_contours()
     @on_trait_change('xindex')
     def update_x_plots_cb(self):
         self.update_x_plots(self.arr[self.tindex],self.plots[0])
@@ -759,6 +747,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         self.update_x_plots(self.seedLil[self.tindex],self.plots[1])
         self.update_x_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_x_cursors()
+        self.update_x_contours()
     @on_trait_change('yindex')
     def update_y_plots_cb(self):
         self.update_y_plots(self.arr[self.tindex],self.plots[0])
@@ -768,6 +757,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         self.update_y_plots(self.seedLil[self.tindex],self.plots[1])
         self.update_y_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_y_cursors()
+        self.update_y_contours()
     @on_trait_change('zindex')
     def update_z_plots_cb(self):
         self.update_z_plots(self.arr[self.tindex],self.plots[0])
@@ -782,18 +772,14 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             #self.plots[2]['YZ'].mlab_source.scalars *= 0
         self.update_z_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_z_cursors()
-        
-        self.contour.mlab_source.scalars = (self.waterArr[self.tindex][self.zindex]==self.nextSeedValue).astype(np.int32)
-        self.contour.enable_contours=True
-        self.contour.contour.auto_contours=False
-        self.contour.contour.contours=[0.5]
+        self.update_z_contours()
     @on_trait_change('tindex')
     def update_all_plots_cb(self):
         self.update_all_plots(self.arr[self.tindex],self.plots[0])
         #self.useSeedArr_t=False
         self.update_all_plots(self.seedLil[self.tindex],self.plots[1])
         self.update_all_plots(self.waterArr[self.tindex],self.plots[2])
-        
+        self.update_all_contours()
         # This is quirky, but it should work ok...
         # good compromise...certainly a lot faster!!!
         #self.plots[2]['XY'].mlab_source.scalars = self.getWaterArr_t_z()
