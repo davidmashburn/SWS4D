@@ -155,7 +155,7 @@ class ArrayView4D(HasTraits):
             #plots(pList[i]) = pFunc(sList[i],interpolate=False,
             #                        colormap='gray',vmin=arrMin,vmax=arrMax) )
             if useSurf:
-                plots[pList[i]] = scene.mlab.pipeline.surface(sList[i])
+                plots[pList[i]] = scene.mlab.pipeline.surface(sList[i]) 
             else:
                 plots[pList[i]] = pFunc(sList[i],plane_orientation='z_axes',
                                         colormap='gray',vmin=arrMin,vmax=arrMax)
@@ -706,6 +706,9 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         for s in ['XY','XZ','YZ']:
             self.plots[1][s].ipw.texture_visibility = (self.overlayOpacity>0)
             self.contours[s].actor.property.opacity = self.overlayOpacity
+        for i in ['x','y','zx','zy']:
+            self.cursors[0][i].actor.visible = (self.overlayOpacity>0)
+            self.cursors[1][i].actor.visible = (self.overlayOpacity>0)
     @on_trait_change('watershedButton')
     def watershedButtonCallback(self):
         self.RunWatershed(index = self.tindex)
@@ -794,8 +797,13 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         #self.updateWaterArr_t()
         #self.update_all_plots(self.waterArr_t,self.plots[2])
     
-    def GetFileBasenameForSaveLoad(self):
-        f = wx.FileSelector()
+    def GetFileBasenameForSaveLoad(self,f=None):
+        if f==None:
+            f = wx.FileSelector()
+            if f in [None,u'','']:
+                print 'Cancelled'
+                return None
+        
         # Strip off extensions if present on the file
         for i in ['_nnzs.npy','_rcd.npy','_shape.txt']:
             if f[-len(i):]==i:
@@ -804,26 +812,30 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             if f[-len(i):]==i:
                 f = f[:-len(i)]
         return f
-    @on_trait_change('saveButton')
-    def OnSave(self):
-        f = self.GetFileBasenameForSaveLoad()
+    def Save(self,filename=None):
+        f = self.GetFileBasenameForSaveLoad(filename)
         if f!=None:
             coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.arr.shape,f+'_waterDiff',fromlil=True)
             coo_utils.SaveCooHDToRCDFile(self.seedLil,self.arr.shape,f+'_seeds',fromlil=True)
+    def Load(self,filename=None):
+        f = self.GetFileBasenameForSaveLoad(filename)
+        if f!=None:
+            shapeWD = coo_utils.GetShapeFromFile( f+'_waterDiff' )
+            shapeS = coo_utils.GetShapeFromFile( f+'_seeds' )
+            if self.arr.shape == shapeWD == shapeS:
+                shapeWD, self.waterLilDiff[:] = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
+                shapeS, self.seedLil[:] = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
+                #self.updateSeedArr_t()
+                self.updateWaterArr()
+                self.update_all_plots_cb()
+            else:
+                wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.arr.shape,shapeWD,shapeS]))
+    @on_trait_change('saveButton')
+    def OnSave(self):
+        self.Save()
     @on_trait_change('loadButton')
     def OnLoad(self):
-        f = self.GetFileBasenameForSaveLoad()
-        shapeWD = coo_utils.GetShapeFromFile( f+'_waterDiff' )
-        shapeS = coo_utils.GetShapeFromFile( f+'_seeds' )
-        if self.arr.shape == shapeWD == shapeS:
-            shapeWD, self.waterLilDiff[:] = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
-            shapeS, self.seedLil[:] = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
-            #self.updateSeedArr_t()
-            self.updateWaterArr()
-            self.update_all_plots_cb()
-        else:
-            wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.arr.shape,shapeWD,shapeS]))
-    
+        self.Load()
     def GetSubArray(self,val):
         wh = np.where(self.waterArr==val)
         zmin,zmax = min(wh[1]),max(wh[1])
