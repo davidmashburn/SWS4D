@@ -507,7 +507,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                       HGroup('saveButton','loadButton','tempButton')
                      )), resizable=True)
     
-    def __init__(self,arr,cursorSize=2,**traits):
+    def __init__(self,arr,cursorSize=2,loadfile=None,**traits):
         HasTraits.__init__(self,arr=arr,**traits)
         self.initPlotsAndCursors()
         # Only really store the waterLilDiffs (see coo_utils for conversions to array)
@@ -524,6 +524,9 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         #self.seedArr_t = np.zeros(arr.shape[1:],dtype=np.int32)
         
         #self.useSeedArr_t=False
+        
+        if loadfile!=None:
+            self.Load(loadfile)
         
         self.lastPos=None
         self.lastPos2=None
@@ -813,13 +816,17 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                 f = f[:-len(i)]
         return f
     def Save(self,filename=None):
+        print 'Save'
         f = self.GetFileBasenameForSaveLoad(filename)
         if f!=None:
+            print 'Saving'
             coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.arr.shape,f+'_waterDiff',fromlil=True)
             coo_utils.SaveCooHDToRCDFile(self.seedLil,self.arr.shape,f+'_seeds',fromlil=True)
     def Load(self,filename=None):
+        print 'Load'
         f = self.GetFileBasenameForSaveLoad(filename)
         if f!=None:
+            print 'Loading'
             shapeWD = coo_utils.GetShapeFromFile( f+'_waterDiff' )
             shapeS = coo_utils.GetShapeFromFile( f+'_seeds' )
             if self.arr.shape == shapeWD == shapeS:
@@ -827,7 +834,6 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                 shapeS, self.seedLil[:] = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
                 #self.updateSeedArr_t()
                 self.updateWaterArr()
-                self.update_all_plots_cb()
             else:
                 wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.arr.shape,shapeWD,shapeS]))
     @on_trait_change('saveButton')
@@ -836,6 +842,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     @on_trait_change('loadButton')
     def OnLoad(self):
         self.Load()
+        self.update_all_plots_cb()
     def GetSubArray(self,val):
         wh = np.where(self.waterArr==val)
         zmin,zmax = min(wh[1]),max(wh[1])
