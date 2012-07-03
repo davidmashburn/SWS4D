@@ -44,7 +44,7 @@ class ArrayViewVolume(HasTraits):
     def _get_tlength(self):
         return self.arr.shape[0]-1
     tindex = Range(low='low', high='tlength', value=0, exclude_high=False, mode='slider') # or spinner
-    zscale = Int(2.6)
+    zscale = Float(1.0)
     
     arr = Array(shape=[None]*4)
     
@@ -105,7 +105,7 @@ class ArrayView4D(HasTraits):
     
     cursorSize=Int(2)
     plotBuffer=Int(10)
-    zscale=Float(2.6)
+    zscale=Float(1.0)
     
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 Group('xindex','yindex','zindex', 'tindex'), resizable=True)
