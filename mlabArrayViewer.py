@@ -856,7 +856,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             wx.MessageBox('Set "Next seed value" to 2 or higher to render the volume for that region.')
             return
         subArr = self.GetSubArray(self.nextSeedValue)
-        vol = ArrayViewVolume(arr=subArr)
+        vol = ArrayViewVolume(arr=subArr,zscale=self.zscale)
         vol.configure_traits()
         
     @on_trait_change('tempButton')
