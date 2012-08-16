@@ -193,6 +193,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     
     numPlots=Int(3)
     numCursors=Int(2)
+    displayString=String('')
     
     overlayOpacity=Range(low=0.0, high=1.0, value=1.0)
     
@@ -207,14 +208,17 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     
     tempButton = Button('Temp')
     
-    view = View(VGroup(HGroup(
-                    Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
-                    Item('sceneWater', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
-                ),
-                Group('xindex','yindex','zindex','tindex','vmin','vmax','overlayOpacity','mouseInteraction',
-                      HGroup('watershedButton','nextSeedValue','volumeRenderButton'),#'updateSeedArr_tButton'),
-                      HGroup('saveButton','loadButton','tempButton')
-                     )), resizable=True)
+    view = View(VGroup(
+            Item('displayString', label=' ', style='readonly'),
+            HGroup(
+             Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
+             Item('sceneWater', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
+            ),
+            Group('xindex','yindex','zindex','tindex','vmin','vmax','overlayOpacity','mouseInteraction',
+             HGroup('watershedButton','nextSeedValue','volumeRenderButton'),#'updateSeedArr_tButton'),
+             HGroup('saveButton','loadButton','tempButton')
+            )
+           ), resizable=True,title='SeedWaterSegmenter 4D')
     
     def __init__(self,arr,cursorSize=2,loadfile=None,**traits):
         HasTraits.__init__(self,arr=arr,**traits)
@@ -586,7 +590,7 @@ if __name__=='__main__':
     #numLoad=1
     #name = '/media/home/ViibreData/ActiveData/NewSegmentation/AS Edge Wound Healing/2009SEPT24CellCycle05_W2X/','','2009SEPT24Cell_Cycle05_2X20s.tif'
     numLoad=2
-    name = '/home/mashbudn/Documents/VIIBRE--ScarHealing/ActiveData/Resille/2012-04-11/1/Riselle_t','1','.TIF'
+    name = '/home/mashbudn/Documents/Drosophila/ActiveData/Resille/Aroshan/2012-04-11/1/Riselle_t','1','.TIF'
     arr0 = GTL.LoadMonolithic(''.join(name))
     arr = np.zeros([numLoad]+list(arr0.shape),dtype=arr0.dtype)
     arr[0] = arr0
