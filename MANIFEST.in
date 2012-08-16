@@ -1,0 +1,4 @@
+include *.txt
+recursive-include SWS4D *.png
+recursive-include SWS4D *.ico
+recursive-include SWS4D *.svg
