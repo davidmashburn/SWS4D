@@ -230,8 +230,8 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                                for j in range(arr.shape[1]) ]
                              for i in range(arr.shape[0]) ]
         self.seedLil = [ [ scipy.sparse.lil_matrix(arr.shape[2:],dtype=np.uint16)
-                            for j in range(arr.shape[1]) ]
-                          for i in range(arr.shape[0]) ]
+                          for j in range(arr.shape[1]) ]
+                        for i in range(arr.shape[0]) ]
         
         self.waterArr = np.zeros(arr.shape,dtype=np.int32)
         #self.seedArr_t = np.zeros(arr.shape[1:],dtype=np.int32)
