@@ -13,6 +13,8 @@ from mayavi.core.ui.api import MayaviScene, SceneEditor, MlabSceneModel
 from mayavi import mlab
 from tvtk.api import tvtk
 
+import GifTiffLoader as GTL
+
 # Using the ipw widget interactions instead, remove this later?
 #def picker_callback(picker_obj):
 #    print picker_obj
@@ -32,13 +34,14 @@ from tvtk.api import tvtk
 
 class ArrayViewVolume(HasTraits):
     low = Int(0)
-    tlength = Property(depends_on=['arr'])
+    tlength = Property(depends_on=['listOfTiffStackFiles'])
     def _get_tlength(self):
-        return self.arr.shape[0]-1
+        return len(self.listOfTiffStackFiles)-1
     tindex = Range(low='low', high='tlength', value=0, exclude_high=False, mode='slider') # or spinner
     zscale = Float(1.0)
     
-    arr = Array(shape=[None]*4)
+    listOfTiffStackFiles = List(String)
+    arr = Array(shape=[None]*3)
     
     scene = Instance(MlabSceneModel, ())
     
@@ -48,47 +51,62 @@ class ArrayViewVolume(HasTraits):
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 Group('tindex'), resizable=True)
     
-    def __init__(self,arr,vmin=None,vmax=None,**traits):
-        HasTraits.__init__(self,arr=arr,**traits) # Call __init__ on the super
-        self.vmin = (arr.min() if vmin==None else vmin)
-        self.vmax = (arr.max() if vmax==None else vmax)
-    
+    def __init__(self,listOfTiffStackFiles,sigma=1,vmin=0,vmax=2**16-1,**traits):
+        HasTraits.__init__(self,**traits) # Call __init__ on the super
+        self.listOfTiffStackFiles = listOfTiffStackFiles
+        self.vmin = vmin
+        self.vmax = vmax
+        self.sigma=sigma
+        
+        self.oldTindex = None
+        self.updateArr()
+    def updateArr(self):
+        if self.tindex !=self.oldTindex:
+            self.arr = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles[self.tindex]),
+                                                      sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
+            #self.arr-=self.arr.min()
+            #self.arr*=((2**16-1.)/self.arr.max())
+            self.oldTindex = self.tindex
     @on_trait_change('scene.activated')
     def make_plot(self):
-        x,y,z = np.mgrid[:self.arr.shape[3],:self.arr.shape[2],:self.arr.shape[1]]
+        x,y,z = np.mgrid[:self.arr.shape[2],:self.arr.shape[1],:self.arr.shape[0]]
         z*=self.zscale
-        self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(x,y,z,self.arr[self.tindex].transpose()), vmin=self.vmin, vmax=self.vmax)
+        self.updateArr()
+        self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(x,y,z,self.arr.transpose()), vmin=self.vmin, vmax=self.vmax)
     
     @on_trait_change('tindex')
     def update_plot(self):
-        self.vPlot.mlab_source.scalars = self.arr[self.tindex].transpose()
+        self.updateArr()
+        self.vPlot.mlab_source.scalars = self.arr.transpose()
 
 # This class is the heart of the code; in fact, it contains 90% of what
 # is needed for ArrayView4DDual as well.
 
 class ArrayView4D(HasTraits):
     low = Int(0)
-    tlength = Property(depends_on=['arr'])
+    tlength = Property(depends_on=['listOfTiffStackFiles'])
     zlength = Property(depends_on=['arr'])
     ylength = Property(depends_on=['arr'])
     xlength = Property(depends_on=['arr'])
     
     def _get_tlength(self):
-        return self.arr.shape[0]-1
+        return len(self.listOfTiffStackFiles)-1
     def _get_zlength(self):
-        return self.arr.shape[1]-1
+        return self.arr.shape[0]-1
     def _get_ylength(self):
-        return self.arr.shape[2]-1
+        return self.arr.shape[1]-1
     def _get_xlength(self):
-        return self.arr.shape[3]-1
+        return self.arr.shape[2]-1
 
     tindex = Range(low='low', high='tlength', value=0, exclude_high=False, mode='slider') # or spinner
     zindex = Range(low='low', high='zlength', value=0, exclude_high=False, mode='slider')
     yindex = Range(low='low', high='ylength', value=0, exclude_high=False, mode='slider')
     xindex = Range(low='low', high='xlength', value=0, exclude_high=False, mode='slider')
     flip = Bool(False)
+    xybutton = Button()
     
-    arr = Array(shape=[None]*4)
+    listOfTiffStackFiles = List(String)
+    arr = Array(shape=[None]*3)
     scene = Instance(MlabSceneModel, ())
     plots = List()
     cursors = List()
@@ -100,11 +118,26 @@ class ArrayView4D(HasTraits):
     zscale=Float(1.0)
     
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
-                Group('xindex','yindex','zindex', 'tindex'), resizable=True)
+                Group('xindex','yindex','zindex', 'tindex','xybutton'), resizable=True)
     
-    def __init__(self,arr,**traits):
-        HasTraits.__init__(self,arr=arr,**traits)
+    def __init__(self,listOfTiffStackFiles,sigma=1,vmin=0,vmax=2**16-1,**traits):
+        HasTraits.__init__(self,**traits) # Call __init__ on the super
+        self.listOfTiffStackFiles = listOfTiffStackFiles
+        self.vmin = vmin
+        self.vmax = vmax
+        self.sigma=sigma
+        
+        self.oldTindex = None
+        self.updateArr()
         self.initPlotsAndCursors()
+    def updateArr(self):
+        if self.tindex !=self.oldTindex:
+            self.arr = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles[self.tindex]),
+                                                      sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
+            self.oldTindex = self.tindex
+    def updateZFrame(self):
+        if self.tindex !=self.oldTindex:
+            self.arr[self.zindex] = scipy.ndimage.gaussian_filter( GTL.LoadFrameFromMonolithic(self.listOfTiffStackFiles[self.tindex],self.zindex), sigma=self.sigma )
     def initPlotsAndCursors(self):
         for i in range(self.numPlots):
             self.plots.append( {'XY':None, 'XZ':None, 'YZ':None} )
@@ -113,14 +146,14 @@ class ArrayView4D(HasTraits):
     
     def make_plots(self,arr,scene,plots,zeroFill=False,useSurf=False):
         # Grab some variables
-        xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]        
+        xs,ys,zs = arr.shape[2], arr.shape[1], arr.shape[0]        
         plotbuf,zsc = self.plotBuffer,self.zscale
         arrMin,arrMax = arr.min(),arr.max()
         
         # Get the clipped arrays
-        xt = arr[self.tindex,:,:,self.xindex].T * (0 if zeroFill else 1)
-        yt = arr[self.tindex,:,self.yindex]     * (0 if zeroFill else 1)
-        zt = arr[self.tindex,self.zindex]       * (0 if zeroFill else 1)
+        xt = arr[:,:,self.xindex].T * (0 if zeroFill else 1)
+        yt = arr[:,self.yindex]     * (0 if zeroFill else 1)
+        zt = arr[self.zindex]       * (0 if zeroFill else 1)
         
         # Make the 3 array_2d_scources in the pipeline; tell it not to compare
         # so array self-copy will notify traits (see AddMouseInteraction)
@@ -168,7 +201,7 @@ class ArrayView4D(HasTraits):
             return scene.mlab.plot3d( x, y, [0.1,0.1], [0.1,0.1], color=(1, 0, 0),
                                        tube_radius=self.cursorSize )
     def make_cursors(self,arr,scene,cursors):
-        xs,ys,zs = arr.shape[3], arr.shape[2], arr.shape[1]
+        xs,ys,zs = arr.shape[2], arr.shape[1], arr.shape[0]
         plotbuf,zsc = self.plotBuffer,self.zscale
         
         cursors['x']  = self.quickLine( scene, [-plotbuf-zs*zsc,ys], self.xindex )
@@ -198,13 +231,13 @@ class ArrayView4D(HasTraits):
     
     def update_x_plots(self,arr,plots):
         if plots is not {}:
-            plots['YZ'].mlab_source.scalars = arr[self.tindex,:,:,self.xindex].T
+            plots['YZ'].mlab_source.scalars = arr[:,:,self.xindex].T
     def update_y_plots(self,arr,plots):
         if plots is not {}:
-            plots['XZ'].mlab_source.scalars = arr[self.tindex,:,self.yindex,:]
+            plots['XZ'].mlab_source.scalars = arr[:,self.yindex,:]
     def update_z_plots(self,arr,plots):
         if plots is not {}:
-            plots['XY'].mlab_source.scalars = arr[self.tindex,self.zindex]
+            plots['XY'].mlab_source.scalars = arr[self.zindex]
     def update_all_plots(self,arr,plots):
         self.update_x_plots(arr,plots)
         self.update_y_plots(arr,plots)
@@ -216,7 +249,7 @@ class ArrayView4D(HasTraits):
         for cursors in self.cursors:
             cursors['y'].mlab_source.set( x=[self.yindex]*2 )
     def update_z_cursors(self):
-        xs,ys,zs = self.arr.shape[3], self.arr.shape[2], self.arr.shape[1]
+        xs,ys,zs = self.arr.shape[2], self.arr.shape[1], self.arr.shape[0]
         for cursors in self.cursors:
             cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
             cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
@@ -226,18 +259,26 @@ class ArrayView4D(HasTraits):
         self.display_scene_helper(self.arr,self.scene,self.plots[0],self.cursors[0])
     @on_trait_change('xindex')
     def update_x_plots_cb(self):
+        self.updateArr()
         self.update_x_plots(self.arr,self.plots[0])
         self.update_x_cursors()
     @on_trait_change('yindex')
     def update_y_plots_cb(self):
+        self.updateArr()
         self.update_y_plots(self.arr,self.plots[0])
         self.update_y_cursors()
     @on_trait_change('zindex')
     def update_z_plots_cb(self):
+        self.updateZFrame()
         self.update_z_plots(self.arr,self.plots[0])
         self.update_z_cursors()
     @on_trait_change('tindex')
     def update_all_plots_cb(self):
+        self.updateZFrame()
+        self.update_z_plots(self.arr,self.plots[0])
+    @on_trait_change('xybutton')
+    def update_arr_and_all_plots(self):
+        self.updateArr()
         self.update_all_plots(self.arr,self.plots[0])
 
 # Same as ArrayView4D but adding vmin and vmax sliders
