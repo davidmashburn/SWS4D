@@ -535,20 +535,37 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             print 'Saving'
             coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.arr.shape,f+'_waterDiff',fromlil=True)
             coo_utils.SaveCooHDToRCDFile(self.seedLil,self.arr.shape,f+'_seeds',fromlil=True)
-    def Load(self,filename=None):
+    def Load(self,filename=None,sLwLD=None):
         print 'Load'
-        f = self.GetFileBasenameForSaveLoad(filename)
-        if f!=None:
+        sh = self.arr.shape
+        shapeMatch=False
+        if slwd!=None: # If pre-loaded arrays are passed, they take precedence
+            seedLil,waterLilDiff = sLwLD  # unpack the list
+            if VerifyCooHDShape(seedLil,sh) and VerifyCooHDShape(waterLilDiff,sh):
+                self.seedLil[:] = seedLil
+                self.waterLilDiff = waterLilDiff
+                shapeMatch=True
+        else:          # othersize, try to find a filename
+            if f==None:
+                f = self.GetFileBasenameForSaveLoad(filename)
+                if f==None: # In case you didn't mean to do a Load
+                    print 'No files selected!'
+                    return
+            
             print 'Loading'
             shapeWD = coo_utils.GetShapeFromFile( f+'_waterDiff' )
             shapeS = coo_utils.GetShapeFromFile( f+'_seeds' )
-            if self.arr.shape == shapeWD == shapeS:
-                shapeWD, self.waterLilDiff[:] = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
-                shapeS, self.seedLil[:] = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
-                #self.updateSeedArr_t()
-                self.updateWaterArr()
-            else:
-                wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.arr.shape,shapeWD,shapeS]))
+            if sh == shapeWD == shapeS:
+                _, self.waterLilDiff[:] = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
+                _, self.seedLil[:] = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
+                shapeMatch=True
+        
+        if not shapeMatch:
+            wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.arr.shape,shapeWD,shapeS]))
+            return
+            
+        #self.updateSeedArr_t()
+        self.updateWaterArr()
     @on_trait_change('saveButton')
     def OnSave(self):
         self.Save()
