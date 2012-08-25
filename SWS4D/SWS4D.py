@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import os
 import numpy as np
 import scipy.ndimage
 import scipy.sparse
@@ -183,6 +184,21 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.update_all_plots(self.arr,self.plots[0])
         self.update_all_plots(self.seedArr,self.plots[1])
         self.update_all_plots(self.waterArr,self.plots[2])
+
+def LoadMostRecentSegmentation(segmentationDir):
+    '''Load the most recent segmentation'''
+    g=glob.glob(os.path.join(segmentationDir,'*.npy')
+    gmax,gmTime = g[0],0
+    for i in g:
+        mt = os.path.getmtime(i)
+        if mt>gmTime:
+            gmax,gmTime = i,mt
+    print gmax
+    # No shape checking, just load the data
+    _, seedLil = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
+    _, waterLilDiff = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
+    
+    return seedLil,waterLilDiff
 
 class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     # store the full waterArr and seedArr as cooHD's (actually lil_matrix format) instead
