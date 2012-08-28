@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import os
+import os,glob
 import numpy as np
 import scipy.ndimage
 import scipy.sparse
@@ -185,15 +185,32 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.update_all_plots(self.seedArr,self.plots[1])
         self.update_all_plots(self.waterArr,self.plots[2])
 
+def GetFileBasenameForSaveLoad(f=None):
+    if f==None:
+        f = wx.FileSelector()
+        if f in [None,u'','']:
+            print 'Cancelled'
+            return None
+    
+    # Strip off extensions if present on the file
+    for i in ['_nnzs.npy','_rcd.npy','_shape.txt']:
+        if f[-len(i):]==i:
+            f = f[:-len(i)]
+    for i in ['_waterDiff','_seeds']:
+        if f[-len(i):]==i:
+            f = f[:-len(i)]
+    return f
+
 def LoadMostRecentSegmentation(segmentationDir):
     '''Load the most recent segmentation'''
-    g=glob.glob(os.path.join(segmentationDir,'*.npy')
+    g=glob.glob(os.path.join(segmentationDir,'*.npy'))
     gmax,gmTime = g[0],0
     for i in g:
         mt = os.path.getmtime(i)
         if mt>gmTime:
             gmax,gmTime = i,mt
     print gmax
+    f = GetFileBasenameForSaveLoad(gmax)
     # No shape checking, just load the data
     _, seedLil = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
     _, waterLilDiff = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
@@ -529,24 +546,9 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         #self.updateWaterArr_t()
         #self.update_all_plots(self.waterArr_t,self.plots[2])
     
-    def GetFileBasenameForSaveLoad(self,f=None):
-        if f==None:
-            f = wx.FileSelector()
-            if f in [None,u'','']:
-                print 'Cancelled'
-                return None
-        
-        # Strip off extensions if present on the file
-        for i in ['_nnzs.npy','_rcd.npy','_shape.txt']:
-            if f[-len(i):]==i:
-                f = f[:-len(i)]
-        for i in ['_waterDiff','_seeds']:
-            if f[-len(i):]==i:
-                f = f[:-len(i)]
-        return f
     def Save(self,filename=None):
         print 'Save'
-        f = self.GetFileBasenameForSaveLoad(filename)
+        f = GetFileBasenameForSaveLoad(filename)
         if f!=None:
             print 'Saving'
             coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.arr.shape,f+'_waterDiff',fromlil=True)
@@ -563,7 +565,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                 shapeMatch=True
         else:          # othersize, try to find a filename
             if f==None:
-                f = self.GetFileBasenameForSaveLoad(filename)
+                f = GetFileBasenameForSaveLoad(filename)
                 if f==None: # In case you didn't mean to do a Load
                     print 'No files selected!'
                     return
