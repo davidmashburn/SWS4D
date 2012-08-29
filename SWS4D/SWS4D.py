@@ -427,19 +427,17 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     #    return coo_utils.CooDiffToArray( self.waterLilDiff[self.tindex][self.zindex].toarray() ).astype(np.uint16)
     def updateWaterArr(self):
         for t in range(self.arr.shape[0]):
-            self.waterArr[t] = [ coo_utils.CooDiffToArray( self.waterLilDiff[t][z].toarray() ).astype(np.uint16)
-                                for z in range(self.arr.shape[1]) ]
+            self.waterArr[t] = coo_utils.CooDiffToArray( self.waterLilDiff[t] )
     #def updateSeedArr_t(self,tindex=None):
     def getSeedArr_t(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
-        return np.array( [ self.seedLil[tindex][z].toarray() for z in range(self.arr.shape[1]) ] , dtype=np.int32)
+        return coo_utils.CooHDToArray( self.seedLil[tindex], dtype=np.int32)
         #self.useSeedArr_t = True
     def updateWaterLilDiff(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
-        self.waterLilDiff[tindex] = [ scipy.sparse.lil_matrix(coo_utils.ArrayToCooDiff(self.waterArr[tindex][z]),dtype=np.int32)
-                                     for z in range(self.arr.shape[1]) ]
+        self.waterLilDiff[tindex] = coo_utils.ArrayToCooDiff( self.waterArr[tindex][z] )
     #def update_seeds_overlay(self):
     #    import time
     #    t=time.time()
@@ -557,11 +555,11 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         print 'Load'
         sh = self.arr.shape
         shapeMatch=False
-        if slwd!=None: # If pre-loaded arrays are passed, they take precedence
+        if sLwLD!=None: # If pre-loaded arrays are passed, they take precedence
             seedLil,waterLilDiff = sLwLD  # unpack the list
-            if VerifyCooHDShape(seedLil,sh) and VerifyCooHDShape(waterLilDiff,sh):
+            if coo_utils.VerifyCooHDShape(seedLil,sh) and coo_utils.VerifyCooHDShape(waterLilDiff,sh):
                 self.seedLil[:] = seedLil
-                self.waterLilDiff = waterLilDiff
+                self.waterLilDiff[:] = waterLilDiff
                 shapeMatch=True
         else:          # othersize, try to find a filename
             if f==None:

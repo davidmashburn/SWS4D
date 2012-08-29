@@ -20,7 +20,7 @@ setup(
                       'traitsui>=4.0',
                       'mayavi>=4.0',
                       'mahotas>=0.5'
-                      'cmpGen>=0.1',
+                      'cmpGen>=0.1.1.1',
                       'FilenameSort>=0.1',
                       'GifTiffLoader>=0.1',
                       'np_utils>=0.1',
