@@ -437,7 +437,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     def updateWaterLilDiff(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
-        self.waterLilDiff[tindex] = coo_utils.ArrayToCooDiff( self.waterArr[tindex][z] )
+        self.waterLilDiff[tindex] = coo_utils.ArrayToCooDiff( self.waterArr[tindex] )
     #def update_seeds_overlay(self):
     #    import time
     #    t=time.time()
