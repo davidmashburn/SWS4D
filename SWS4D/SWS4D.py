@@ -562,7 +562,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                 self.waterLilDiff[:] = waterLilDiff
                 shapeMatch=True
         else:          # othersize, try to find a filename
-            if f==None:
+            if filename==None:
                 f = GetFileBasenameForSaveLoad(filename)
                 if f==None: # In case you didn't mean to do a Load
                     print 'No files selected!'
