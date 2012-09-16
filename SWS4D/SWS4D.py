@@ -562,18 +562,17 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                 self.waterLilDiff[:] = waterLilDiff
                 shapeMatch=True
         else:          # othersize, try to find a filename
-            if filename==None:
-                f = GetFileBasenameForSaveLoad(filename)
-                if f==None: # In case you didn't mean to do a Load
-                    print 'No files selected!'
-                    return
+            filename = GetFileBasenameForSaveLoad(filename)
+            if filename==None: # In case you didn't mean to do a Load
+                print 'No files selected!'
+                return
             
             print 'Loading'
-            shapeWD = coo_utils.GetShapeFromFile( f+'_waterDiff' )
-            shapeS = coo_utils.GetShapeFromFile( f+'_seeds' )
+            shapeWD = coo_utils.GetShapeFromFile( filename+'_waterDiff' )
+            shapeS = coo_utils.GetShapeFromFile( filename+'_seeds' )
             if sh == shapeWD == shapeS:
-                _, self.waterLilDiff[:] = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
-                _, self.seedLil[:] = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
+                _, self.waterLilDiff[:] = coo_utils.LoadRCDFileToCooHD(filename+'_waterDiff',tolil=True)
+                _, self.seedLil[:] = coo_utils.LoadRCDFileToCooHD(filename+'_seeds',tolil=True)
                 shapeMatch=True
         
         if not shapeMatch:
