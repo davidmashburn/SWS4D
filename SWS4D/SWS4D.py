@@ -185,10 +185,18 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.update_all_plots(self.seedArr,self.plots[1])
         self.update_all_plots(self.waterArr,self.plots[2])
 
-def GetFileBasenameForSaveLoad(f=None):
-    if f==None:
-        f = wx.FileSelector()
-        if f in [None,u'','']:
+def GetFileBasenameForSaveLoad(f=None,saveDialog=False):
+    if f==None: # Use a dialog to choose the file
+        if saveDialog:
+            # Use the save dialog to prevent accidental overwriting
+            fd=wx.FileDialog(None,'Save Seeds as...',style=wx.FD_SAVE|wx.FD_OVERWRITE_PROMPT)
+            if fd.ShowModal()==wx.ID_OK:
+                f = os.path.join(fd.GetDirectory(),fd.GetFilename())
+        else:
+            # Use the basic dialog, just click a file
+            f = wx.FileSelector( "Load Seeds... (choose a *_nnzs.npy, *_rcd.npy, or *_shape.txt)" )
+        
+        if f in [None,u'','']: # dialog was cancelled
             print 'Cancelled'
             return None
     
@@ -546,11 +554,11 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     
     def Save(self,filename=None):
         print 'Save'
-        f = GetFileBasenameForSaveLoad(filename)
-        if f!=None:
+        filename = GetFileBasenameForSaveLoad(filename,saveDialog=True) # Overwrite protection ONLY IF FILENAME IS NONE!
+        if filename!=None:
             print 'Saving'
-            coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.arr.shape,f+'_waterDiff',fromlil=True)
-            coo_utils.SaveCooHDToRCDFile(self.seedLil,self.arr.shape,f+'_seeds',fromlil=True)
+            coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.arr.shape,filename+'_waterDiff',fromlil=True)
+            coo_utils.SaveCooHDToRCDFile(self.seedLil,self.arr.shape,filename+'_seeds',fromlil=True)
     def Load(self,filename=None,sLwLD=None):
         print 'Load'
         sh = self.arr.shape
