@@ -22,6 +22,7 @@ from np_utils import BresenhamFunction,BresenhamTriangle,circs,shprs
 import coo_utils
 
 from mlabArrayViewer import ArrayViewVolume,ArrayView4D,ArrayView4DVminVmax,ArrayView4DDual
+from SWS4D_utils import GetFileBasenameForSaveLoad,LoadMostRecentSegmentation
 
 mouseInteractionModes = ['print','doodle','erase','line','plane','move']
 
@@ -184,44 +185,6 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.update_all_plots(self.arr,self.plots[0])
         self.update_all_plots(self.seedArr,self.plots[1])
         self.update_all_plots(self.waterArr,self.plots[2])
-
-def GetFileBasenameForSaveLoad(f=None,saveDialog=False):
-    if f==None:
-        # Use a dialog to choose the file, use overwrite prompt when saving...
-        flags = ( wx.ID_SAVE|wx.FD_OVERWRITE_PROMPT if saveDialog else wx.ID_OPEN)
-        loadMessage = "Load Seeds... (choose a *_nnzs.npy, *_rcd.npy, or *_shape.txt)"
-        message = ( 'Save Seeds as...' if saveDialog else loadMessage )
-        
-        f = wx.FileSelector(message,flags=flags)
-        
-        if f in [None,u'','']: # dialog was cancelled
-            print 'Cancelled'
-            return None
-    
-    # Strip off extensions if present on the file
-    for i in ['_nnzs.npy','_rcd.npy','_shape.txt']:
-        if f[-len(i):]==i:
-            f = f[:-len(i)]
-    for i in ['_waterDiff','_seeds']:
-        if f[-len(i):]==i:
-            f = f[:-len(i)]
-    return f
-
-def LoadMostRecentSegmentation(segmentationDir):
-    '''Load the most recent segmentation'''
-    g=glob.glob(os.path.join(segmentationDir,'*.npy'))
-    gmax,gmTime = g[0],0
-    for i in g:
-        mt = os.path.getmtime(i)
-        if mt>gmTime:
-            gmax,gmTime = i,mt
-    print gmax
-    f = GetFileBasenameForSaveLoad(gmax)
-    # No shape checking, just load the data
-    _, seedLil = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
-    _, waterLilDiff = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
-    
-    return seedLil,waterLilDiff
 
 class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     # store the full waterArr and seedArr as cooHD's (actually lil_matrix format) instead
