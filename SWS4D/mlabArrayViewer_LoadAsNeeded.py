@@ -134,6 +134,7 @@ class ArrayView4D(HasTraits):
         if self.tindex !=self.oldTindex:
             self.arr = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles[self.tindex]),
                                                       sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
+            self.shape = (len(self.listOfTiffStackFiles),)+arr.shape # This is the shape of the whole dataset
             self.oldTindex = self.tindex
     def updateZFrame(self):
         if self.tindex !=self.oldTindex:

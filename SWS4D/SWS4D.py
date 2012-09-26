@@ -100,8 +100,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                                 planepoints = BresenhamTriangle(pos,self.lastPos,self.lastPos2)
                                 points = []
                                 for p in planepoints:
-                                    #if 0<=p[2]<self.arr.shape[1]-1 and 0<=p[0]<self.arr.shape[2]-1 and 0<=p[1]<self.arr.shape[3]-1:
-                                    if 0<=p[0]<self.arr.shape[0]-1 and 0<=p[1]<self.arr.shape[1]-1 and 0<=p[2]<self.arr.shape[2]-1 and 0<=p[2]<self.arr.shape[2]-1:
+                                    #if 0<=p[2]<self.shape[1]-1 and 0<=p[0]<self.shape[2]-1 and 0<=p[1]<self.shape[3]-1:
+                                    if 0<=p[0]<self.shape[0]-1 and 0<=p[1]<self.shape[1]-1 and 0<=p[2]<self.shape[2]-1 and 0<=p[2]<self.shape[2]-1:
                                         for i in range(2):
                                             for j in range(2):
                                                 #for k in range(2): # Lose the z fiddle... too confusing
@@ -131,7 +131,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             plots[view].ipw.add_observer('InteractionEvent', genMC(view))
             plots[view].ipw.add_observer('StartInteractionEvent', genMC(view))
     def RunWatershed(self,index='all'):
-        tList = ( range(self.arr.shape[0]) if index=='all' else [index] )
+        tList = ( range(self.shape[0]) if index=='all' else [index] )
         for t in tList:
             self.waterArr[t] = mahotas.cwatershed(self.arr[t],self.seedArr[t])
             print 'Watershed on frame',t
@@ -295,8 +295,8 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                             
                             pointsExp = []
                             for p in points:
-                                #if 0<=p[2]<self.arr.shape[1]-1 and 0<=p[0]<self.arr.shape[2]-1 and 0<=p[1]<self.arr.shape[3]-1:
-                                if 0<=p[0]<self.arr.shape[0] and 0<=p[1]<self.arr.shape[1] and 0<=p[2]<self.arr.shape[2]-1 and 0<=p[2]<self.arr.shape[2]-1:
+                                #if 0<=p[2]<self.shape[1]-1 and 0<=p[0]<self.shape[2]-1 and 0<=p[1]<self.shape[3]-1:
+                                if 0<=p[0]<self.shape[0] and 0<=p[1]<self.shape[1] and 0<=p[2]<self.shape[2]-1 and 0<=p[2]<self.shape[2]-1:
                                     for i in range(2):
                                         for j in range(2):
                                             #for k in range(2): # Lose the z fiddle... too confusing
@@ -338,7 +338,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             plots[view].ipw.add_observer('StartInteractionEvent', genMC(view))
     
     def RunWatershed(self,index='all'):
-        tList = ( range(self.arr.shape[0]) if index=='all' else [index] )
+        tList = ( range(self.shape[0]) if index=='all' else [index] )
         for t in tList:
             #self.updateSeedArr_t(t)
             seedArr_t = self.getSeedArr_t(t)
@@ -395,7 +395,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     #    # This should be the inner function in updateWaterArr_t
     #    return coo_utils.CooDiffToArray( self.waterLilDiff[self.tindex][self.zindex].toarray() ).astype(np.uint16)
     def updateWaterArr(self):
-        for t in range(self.arr.shape[0]):
+        for t in range(self.shape[0]):
             self.waterArr[t] = coo_utils.CooDiffToArray( self.waterLilDiff[t] )
     #def updateSeedArr_t(self,tindex=None):
     def getSeedArr_t(self,tindex=None):
@@ -518,11 +518,11 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         filename = GetFileBasenameForSaveLoad(filename,saveDialog=True) # Overwrite protection ONLY IF FILENAME IS NONE!
         if filename!=None:
             print 'Saving'
-            coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.arr.shape,filename+'_waterDiff',fromlil=True)
-            coo_utils.SaveCooHDToRCDFile(self.seedLil,self.arr.shape,filename+'_seeds',fromlil=True)
+            coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.shape,filename+'_waterDiff',fromlil=True)
+            coo_utils.SaveCooHDToRCDFile(self.seedLil,self.shape,filename+'_seeds',fromlil=True)
     def Load(self,filename=None,sLwLD=None):
         print 'Load'
-        sh = self.arr.shape
+        sh = self.shape
         shapeMatch=False
         if sLwLD!=None: # If pre-loaded arrays are passed, they take precedence
             seedLil,waterLilDiff = sLwLD  # unpack the list
@@ -545,7 +545,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                 shapeMatch=True
         
         if not shapeMatch:
-            wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.arr.shape,shapeWD,shapeS]))
+            wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.shape,shapeWD,shapeS]))
             return
             
         #self.updateSeedArr_t()

@@ -50,12 +50,13 @@ class ArrayViewVolume(HasTraits):
     
     def __init__(self,arr,vmin=None,vmax=None,**traits):
         HasTraits.__init__(self,arr=arr,**traits) # Call __init__ on the super
+        self.shape = arr.shape
         self.vmin = (arr.min() if vmin==None else vmin)
         self.vmax = (arr.max() if vmax==None else vmax)
     
     @on_trait_change('scene.activated')
     def make_plot(self):
-        x,y,z = np.mgrid[:self.arr.shape[3],:self.arr.shape[2],:self.arr.shape[1]]
+        x,y,z = np.mgrid[:self.shape[3],:self.shape[2],:self.shape[1]]
         z*=self.zscale
         self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(x,y,z,self.arr[self.tindex].transpose()), vmin=self.vmin, vmax=self.vmax)
     
@@ -74,13 +75,13 @@ class ArrayView4D(HasTraits):
     xlength = Property(depends_on=['arr'])
     
     def _get_tlength(self):
-        return self.arr.shape[0]-1
+        return self.shape[0]-1
     def _get_zlength(self):
-        return self.arr.shape[1]-1
+        return self.shape[1]-1
     def _get_ylength(self):
-        return self.arr.shape[2]-1
+        return self.shape[2]-1
     def _get_xlength(self):
-        return self.arr.shape[3]-1
+        return self.shape[3]-1
 
     tindex = Range(low='low', high='tlength', value=0, exclude_high=False, mode='slider') # or spinner
     zindex = Range(low='low', high='zlength', value=0, exclude_high=False, mode='slider')
@@ -104,6 +105,7 @@ class ArrayView4D(HasTraits):
     
     def __init__(self,arr,**traits):
         HasTraits.__init__(self,arr=arr,**traits)
+        self.shape = arr.shape
         self.initPlotsAndCursors()
     def initPlotsAndCursors(self):
         for i in range(self.numPlots):
@@ -216,7 +218,7 @@ class ArrayView4D(HasTraits):
         for cursors in self.cursors:
             cursors['y'].mlab_source.set( x=[self.yindex]*2 )
     def update_z_cursors(self):
-        xs,ys,zs = self.arr.shape[3], self.arr.shape[2], self.arr.shape[1]
+        xs,ys,zs = self.shape[3], self.shape[2], self.shape[1]
         for cursors in self.cursors:
             cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
             cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
