@@ -453,10 +453,5 @@ if __name__=='__main__':
     for i in range(1,numLoad):
         arr[i]= GTL.LoadMonolithic(name[0]+str(i+1)+name[2])
     
-    #a = ArrayView4D(arr=arr)
-    #a = ArrayView4DVminVmax(arr=arr)
-    #arr2 = arr//2;arr2[:,:,:10]=0; a = ArrayView4DDual(arr=arr,arr2=arr2)
-    #a = SeedWaterSegmenter4D(arr=arr)
     a = SeedWaterSegmenter4DCompressed(arr=arr)
-    #a = ArrayViewVolume(arr=arr)
     a.configure_traits()
