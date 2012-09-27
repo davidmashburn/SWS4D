@@ -131,10 +131,10 @@ class ArrayView4D(HasTraits):
         self.oldTindex = None
         self.updateArr()
         self.initPlotsAndCursors()
-    def updateArr(self):
-        if self.tindex !=self.oldTindex:
-            self.arr = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles[self.tindex]),
-                                                      sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
+    def updateArr(self,force=True):
+        if self.tindex !=self.oldTindex or force==True:
+            self.arr[:] = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles[self.tindex]),
+                                                         sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
             self.shape = (len(self.listOfTiffStackFiles),)+self.arr.shape # This is the shape of the whole dataset
             self.oldTindex = self.tindex
     def updateZFrame(self):
@@ -280,7 +280,7 @@ class ArrayView4D(HasTraits):
         self.update_z_plots(self.arr,self.plots[0])
     @on_trait_change('xybutton')
     def update_arr_and_all_plots(self):
-        self.updateArr()
+        self.updateArr(force=True)
         self.update_all_plots(self.arr,self.plots[0])
 
 # Same as ArrayView4D but adding vmin and vmax sliders
@@ -368,6 +368,11 @@ class ArrayView4DDual(ArrayView4DVminVmax):
         self.update_z_cursors()
     @on_trait_change('tindex')
     def update_all_plots_cb(self):
+        self.update_all_plots(self.arr,self.plots[0])
+        self.update_all_plots(self.arr2,self.plots[1])
+    @on_trait_change('xybutton')
+    def update_arr_and_all_plots(self):
+        self.updateArr()
         self.update_all_plots(self.arr,self.plots[0])
         self.update_all_plots(self.arr2,self.plots[1])
 

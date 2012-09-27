@@ -359,13 +359,12 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.update_z_contours()
     @on_trait_change('xybutton')
     def update_arr_and_all_plots(self):
-        self.updateArr()
+        self.updateArr(force=True)
         self.updateWaterArr_t()
         self.update_all_plots(self.arr,self.plots[0])
         self.update_all_plots(self.seedLil[self.tindex],self.plots[1])
         self.update_all_plots(self.waterArr_t,self.plots[2])
         self.update_all_contours()
-        
         
     def Save(self,filename=None):
         print 'Save'
