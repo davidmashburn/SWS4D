@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 '''Utility functions for SWS4D'''
+import os,glob
 import numpy as np
+import wx
 import coo_utils
 
 def GetFileBasenameForSaveLoad(f=None,saveDialog=False):
@@ -25,8 +27,7 @@ def GetFileBasenameForSaveLoad(f=None,saveDialog=False):
             f = f[:-len(i)]
     return f
 
-def LoadMostRecentSegmentation(segmentationDir):
-    '''Load the most recent segmentation'''
+def GetMostRecentSegmentationBasename(segmentationDir):
     g=glob.glob(os.path.join(segmentationDir,'*.npy'))
     gmax,gmTime = g[0],0
     for i in g:
@@ -34,7 +35,13 @@ def LoadMostRecentSegmentation(segmentationDir):
         if mt>gmTime:
             gmax,gmTime = i,mt
     print gmax
-    f = GetFileBasenameForSaveLoad(gmax)
+    
+    return GetFileBasenameForSaveLoad(gmax)
+
+def LoadMostRecentSegmentation(segmentationDir):
+    '''Load the most recent segmentation'''
+    f = GetMostRecentSegmentationBasename(segmentationDir)
+    
     # No shape checking, just load the data
     _, seedLil = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
     _, waterLilDiff = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)

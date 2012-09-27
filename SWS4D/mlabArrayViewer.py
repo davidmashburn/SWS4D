@@ -283,6 +283,7 @@ class ArrayView4DDual(ArrayView4DVminVmax):
                 Group('xindex','yindex','zindex','tindex','vmin','vmax')), resizable=True)
     def __init__(self,arr,arr2,**traits):
         HasTraits.__init__(self,arr=arr,arr2=arr2,**traits)
+        self.shape = arr.shape
         self.initPlotsAndCursors()
     @on_trait_change('scene2.activated')
     def display_scene2(self):

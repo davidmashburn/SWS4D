@@ -64,12 +64,13 @@ class ArrayViewVolume(HasTraits):
         if self.tindex !=self.oldTindex:
             self.arr = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles[self.tindex]),
                                                       sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
+            self.shape = (len(self.listOfTiffStackFiles),)+self.arr.shape
             #self.arr-=self.arr.min()
             #self.arr*=((2**16-1.)/self.arr.max())
             self.oldTindex = self.tindex
     @on_trait_change('scene.activated')
     def make_plot(self):
-        x,y,z = np.mgrid[:self.arr.shape[2],:self.arr.shape[1],:self.arr.shape[0]]
+        x,y,z = np.mgrid[:self.shape[3],:self.shape[2],:self.shape[1]]
         z*=self.zscale
         self.updateArr()
         self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(x,y,z,self.arr.transpose()), vmin=self.vmin, vmax=self.vmax)
@@ -121,8 +122,8 @@ class ArrayView4D(HasTraits):
                 Group('xindex','yindex','zindex', 'tindex','xybutton'), resizable=True)
     
     def __init__(self,listOfTiffStackFiles,sigma=1,vmin=0,vmax=2**16-1,**traits):
-        HasTraits.__init__(self,**traits) # Call __init__ on the super
-        self.listOfTiffStackFiles = listOfTiffStackFiles
+        HasTraits.__init__(self,listOfTiffStackFiles=listOfTiffStackFiles, **traits) # Call __init__ on the super
+        #self.listOfTiffStackFiles = listOfTiffStackFiles
         self.vmin = vmin
         self.vmax = vmax
         self.sigma=sigma
@@ -134,7 +135,7 @@ class ArrayView4D(HasTraits):
         if self.tindex !=self.oldTindex:
             self.arr = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles[self.tindex]),
                                                       sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
-            self.shape = (len(self.listOfTiffStackFiles),)+arr.shape # This is the shape of the whole dataset
+            self.shape = (len(self.listOfTiffStackFiles),)+self.arr.shape # This is the shape of the whole dataset
             self.oldTindex = self.tindex
     def updateZFrame(self):
         if self.tindex !=self.oldTindex:
@@ -250,7 +251,7 @@ class ArrayView4D(HasTraits):
         for cursors in self.cursors:
             cursors['y'].mlab_source.set( x=[self.yindex]*2 )
     def update_z_cursors(self):
-        xs,ys,zs = self.arr.shape[2], self.arr.shape[1], self.arr.shape[0]
+        xs,ys,zs = self.shape[3], self.shape[2], self.shape[1]
         for cursors in self.cursors:
             cursors['zx'].mlab_source.set( x=[(self.zindex-zs)*self.zscale - self.plotBuffer]*2 )
             cursors['zy'].mlab_source.set( y=[self.plotBuffer+xs+self.zindex*self.zscale]*2 )
@@ -291,7 +292,7 @@ class ArrayView4DVminVmax(ArrayView4D):
     
     # The layout of the dialog created
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
-                Group('xindex','yindex','zindex', 'tindex', 'vmin', 'vmax'), resizable=True)
+                Group('xindex','yindex','zindex', 'tindex', 'vmin', 'vmax','xybutton'), resizable=True)
     def display_scene_helper(self,arr,scene,plots,cursors,zeroFill=False,updateVminVmax=False):
         ArrayView4D.display_scene_helper(self,arr,scene,plots,cursors,zeroFill=zeroFill)
         if updateVminVmax:
@@ -311,7 +312,8 @@ class ArrayView4DVminVmax(ArrayView4D):
                 self.plots[0]['YZ'].parent.scalar_lut_manager.data_range = self.vmin,self.vmax
 
 class ArrayView4DDual(ArrayView4DVminVmax):
-    arr2 = Array(shape=[None]*4)
+    listOfTiffStackFiles2 = List(String)
+    arr2 = Array(shape=[None]*3)
     scene2 = Instance(MlabSceneModel, ())
     numPlots=Int(2)
     numCursors=Int(2)
@@ -320,10 +322,32 @@ class ArrayView4DDual(ArrayView4DVminVmax):
                     Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                     Item('scene2', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 ),
-                Group('xindex','yindex','zindex','tindex','vmin','vmax')), resizable=True)
-    def __init__(self,arr,arr2,**traits):
-        HasTraits.__init__(self,arr=arr,arr2=arr2,**traits)
+                Group('xindex','yindex','zindex','tindex','vmin','vmax','xybutton')), resizable=True)
+    def __init__(self,listOfTiffStackFiles,listOfTiffStackFiles2,sigma=1,vmin=0,vmax=2**16-1,**traits):
+        print 'mlabAV'
+        
+        HasTraits.__init__(self,listOfTiffStackFiles=listOfTiffStackFiles,listOfTiffStackFiles2=listOfTiffStackFiles2,**traits) # Call __init__ on the super
+        #self.listOfTiffStackFiles = listOfTiffStackFiles
+        #self.listOfTiffStackFiles2 = listOfTiffStackFiles
+        self.vmin = vmin
+        self.vmax = vmax
+        self.sigma=sigma
+        
+        self.oldTindex = None
+        self.updateArr()
         self.initPlotsAndCursors()
+    def updateArr(self):
+        if self.tindex !=self.oldTindex:
+            self.arr = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles[self.tindex]),
+                                                      sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
+            self.arr2 = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles2[self.tindex]),
+                                                       sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
+            self.shape = (len(self.listOfTiffStackFiles),)+self.arr.shape # This is the shape of the whole dataset
+            self.oldTindex = self.tindex
+    def updateZFrame(self):
+        if self.tindex !=self.oldTindex:
+            self.arr[self.zindex] = scipy.ndimage.gaussian_filter( GTL.LoadFrameFromMonolithic(self.listOfTiffStackFiles[self.tindex],self.zindex), sigma=self.sigma )
+            self.arr2[self.zindex] = scipy.ndimage.gaussian_filter( GTL.LoadFrameFromMonolithic(self.listOfTiffStackFiles2[self.tindex],self.zindex), sigma=self.sigma )
     @on_trait_change('scene2.activated')
     def display_scene2(self):
         self.display_scene_helper(self.arr2,self.scene2,self.plots[1],self.cursors[1])

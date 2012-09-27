@@ -47,6 +47,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     
     def __init__(self,arr,waterArr=None,seedArr=None,cursorSize=2,**traits):
         HasTraits.__init__(self,arr=arr,**traits)
+        self.shape = arr.shape
         self.initPlotsAndCursors()
         
         self.waterArr = ( arr*0 if waterArr==None else waterArr )
@@ -224,6 +225,7 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
     
     def __init__(self,arr,cursorSize=2,loadfile=None,**traits):
         HasTraits.__init__(self,arr=arr,**traits)
+        self.shape = arr.shape
         self.initPlotsAndCursors()
         # Only really store the waterLilDiffs (see coo_utils for conversions to array)
         # This is NOT the same thing as the SWS3D woutline...
