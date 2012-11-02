@@ -402,8 +402,9 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                 self.overwriteLil[:] = overwriteMask
             else:
                 print 'OverwriteMask passed as argument is not the right shape!'
-        else:
-            filename = GetFileBasenameForSaveLoad(filename)
+        elif filename!=None:
+            # This should already be done above...
+            #filename = GetFileBasenameForSaveLoad(filename)
             
             if sum([os.path.exists(filename+'_overwriteMask'+i) for i in ('_rcd.npy','_nnzs.npy','_shape.txt')])==3:
                 shapeOM = coo_utils.GetShapeFromFile( filename+'_overwriteMask' )
