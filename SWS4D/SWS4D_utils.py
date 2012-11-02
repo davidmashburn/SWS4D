@@ -22,7 +22,7 @@ def GetFileBasenameForSaveLoad(f=None,saveDialog=False):
     for i in ['_nnzs.npy','_rcd.npy','_shape.txt']:
         if f[-len(i):]==i:
             f = f[:-len(i)]
-    for i in ['_waterDiff','_seeds']:
+    for i in ['_waterDiff','_seeds','_overwriteMask']:
         if f[-len(i):]==i:
             f = f[:-len(i)]
     return f
@@ -46,7 +46,12 @@ def LoadMostRecentSegmentation(segmentationDir):
     _, seedLil = coo_utils.LoadRCDFileToCooHD(f+'_seeds',tolil=True)
     _, waterLilDiff = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
     
-    return seedLil,waterLilDiff
+    try:
+        _,overwriteLil = coo_utils.LoadRCDFileToCooHD(f+'_overwriteMask',tolil=True)
+    except IOError:
+        overwriteLil=None
+    
+    return seedLil,waterLilDiff,overwriteLil
 
 def ScrubCellID(sws4D,sh,cellID):
     '''Super-slow value clear...'''

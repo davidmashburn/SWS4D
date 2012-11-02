@@ -26,7 +26,7 @@ from SWS4D_utils import GetFileBasenameForSaveLoad,LoadMostRecentSegmentation
 
 mouseInteractionModes = ['print','doodle','erase','line','plane','move']
 
-class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
+class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     # store the full waterArr and seedArr as cooHD's (actually lil_matrix format) instead
     #seedArr_t = Array(shape=[None]*3)
     waterArr = Array(shape=[None]*4)
@@ -66,18 +66,21 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         HasTraits.__init__(self,arr=arr,**traits)
         self.shape = arr.shape
         self.initPlotsAndCursors()
+        
         # Only really store the waterLilDiffs (see coo_utils for conversions to array)
         # This is NOT the same thing as the SWS3D woutline...
+        self.waterLilDiff = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.int32) # This needs to be able to go negative...
+                               for j in range(self.shape[1]) ]
+                             for i in range(self.shape[0]) ]
+        self.seedLil = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.uint16)
+                          for j in range(self.shape[1]) ]
+                        for i in range(self.shape[0]) ]
+        self.overwriteLil = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.uint16)
+                               for j in range(self.shape[1]) ]
+                             for i in range(self.shape[0]) ]
         
-        self.waterLilDiff = [ [ scipy.sparse.lil_matrix(arr.shape[2:],dtype=np.int32) # This needs to be able to go negative...
-                               for j in range(arr.shape[1]) ]
-                             for i in range(arr.shape[0]) ]
-        self.seedLil = [ [ scipy.sparse.lil_matrix(arr.shape[2:],dtype=np.uint16)
-                          for j in range(arr.shape[1]) ]
-                        for i in range(arr.shape[0]) ]
-        
-        self.waterArr = np.zeros(arr.shape,dtype=np.int32)
-        #self.seedArr_t = np.zeros(arr.shape[1:],dtype=np.int32)
+        self.waterArr = np.zeros(self.shape,dtype=np.int32)
+        #self.seedArr_t = np.zeros(self.shape[1:],dtype=np.int32)
         
         #self.useSeedArr_t=False
         
@@ -183,7 +186,15 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
         for t in tList:
             #self.updateSeedArr_t(t)
             seedArr_t = self.getSeedArr_t(t)
-            self.waterArr[t] = mahotas.cwatershed(self.arr[t],seedArr_t)
+            arr = self.arr[t]
+            for z in range(self.shape[1]):
+                # if there is any overwriter masking for this stack, then use it
+                # (and otherwise skip it...)
+                if self.overwriteLil[t][z].nnz>0:
+                    arr = np.maximum(coo_utils.CooHDToArray(self.overwriteLil[t]),arr)
+                    break
+            
+            self.waterArr[t] = mahotas.cwatershed(arr,seedArr_t)
             self.updateWaterLilDiff(t)
             print 'Watershed on frame',t
         self.lastPos=None
@@ -361,7 +372,8 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
             print 'Saving'
             coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.shape,filename+'_waterDiff',fromlil=True)
             coo_utils.SaveCooHDToRCDFile(self.seedLil,self.shape,filename+'_seeds',fromlil=True)
-    def Load(self,filename=None,sLwLD=None):
+            coo_utils.SaveCooHDToRCDFile(self.seedLil,self.shape,filename+'_overwriteMask',fromlil=True)
+    def Load(self,filename=None,sLwLD=None,overwriteMask=None):
         print 'Load'
         sh = self.shape
         shapeMatch=False
@@ -377,13 +389,34 @@ class SeedWaterSegmenter4DCompressed(ArrayView4DVminVmax):
                 print 'No files selected!'
                 return
             
-            print 'Loading'
+            print 'Loading',filename
             shapeWD = coo_utils.GetShapeFromFile( filename+'_waterDiff' )
             shapeS = coo_utils.GetShapeFromFile( filename+'_seeds' )
             if sh == shapeWD == shapeS:
                 _, self.waterLilDiff[:] = coo_utils.LoadRCDFileToCooHD(filename+'_waterDiff',tolil=True)
                 _, self.seedLil[:] = coo_utils.LoadRCDFileToCooHD(filename+'_seeds',tolil=True)
                 shapeMatch=True
+        
+        if overwriteMask!=None:
+            if coo_utils.VerifyCooHDShape(overwriteMask,sh):
+                self.overwriteLil[:] = overwriteMask
+            else:
+                print 'OverwriteMask passed as argument is not the right shape!'
+        else:
+            filename = GetFileBasenameForSaveLoad(filename)
+            
+            if sum([os.path.exists(filename+'_overwriteMask'+i) for i in ('_rcd.npy','_nnzs.npy','_shape.txt')])==3:
+                shapeOM = coo_utils.GetShapeFromFile( filename+'_overwriteMask' )
+                if sh == shapeOM:
+                    _, self.overwriteLil[:] = coo_utils.LoadRCDFileToCooHD(filename+'_overwriteMask',tolil=True)
+                else:
+                    print 'overwriteMask file is the wrong shape! Ignoring!'
+            else:
+                print 'Cannot find overwriteMask, clear the mask instead'
+                for t in range(self.shape[0]):
+                    for z in range(self.shape[1]):
+                        if self.overwriteLil[t][z].nnz>0:
+                            self.overwriteLil[t][z][:,:]=0
         
         if not shapeMatch:
             wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.shape,shapeWD,shapeS]))
@@ -439,5 +472,5 @@ if __name__=='__main__':
     for i in range(1,numLoad):
         arr[i]= GTL.LoadMonolithic(name[0]+str(i+1)+name[2])
     
-    a = SeedWaterSegmenter4DCompressed(arr=arr)
+    a = SeedWaterSegmenter4D(arr=arr)
     a.configure_traits()

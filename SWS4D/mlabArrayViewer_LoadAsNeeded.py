@@ -133,8 +133,13 @@ class ArrayView4D(HasTraits):
         self.initPlotsAndCursors()
     def updateArr(self,force=True):
         if self.tindex !=self.oldTindex or force==True:
-            self.arr[:] = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles[self.tindex]),
-                                                         sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
+            if self.arr.shape==(1,1,1):
+                self.arr = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles[self.tindex]),
+                                                          sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
+            else:
+                self.arr[:] = scipy.ndimage.gaussian_filter( GTL.LoadMonolithic(self.listOfTiffStackFiles[self.tindex]),
+                                                             sigma=[self.sigma*1./self.zscale, self.sigma*1., self.sigma*1.] )
+            
             self.shape = (len(self.listOfTiffStackFiles),)+self.arr.shape # This is the shape of the whole dataset
             self.oldTindex = self.tindex
     def updateZFrame(self):
