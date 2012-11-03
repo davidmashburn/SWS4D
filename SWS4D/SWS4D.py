@@ -372,7 +372,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             print 'Saving'
             coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.shape,filename+'_waterDiff',fromlil=True)
             coo_utils.SaveCooHDToRCDFile(self.seedLil,self.shape,filename+'_seeds',fromlil=True)
-            coo_utils.SaveCooHDToRCDFile(self.seedLil,self.shape,filename+'_overwriteMask',fromlil=True)
+            coo_utils.SaveCooHDToRCDFile(self.overwriteLil,self.shape,filename+'_overwriteMask',fromlil=True)
     def Load(self,filename=None,sLwLD=None,overwriteMask=None):
         print 'Load'
         sh = self.shape
