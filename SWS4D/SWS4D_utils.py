@@ -47,11 +47,12 @@ def LoadMostRecentSegmentation(segmentationDir):
     _, waterLilDiff = coo_utils.LoadRCDFileToCooHD(f+'_waterDiff',tolil=True)
     
     try:
-        _,overwriteLil = coo_utils.LoadRCDFileToCooHD(f+'_overwriteMask',tolil=True)
+        _,maskSeedLil = coo_utils.LoadRCDFileToCooHD(f+'_maskSeeds',tolil=True)
+        _,maskLilDiff = coo_utils.LoadRCDFileToCooHD(f+'_maskDiff',tolil=True)
+        
+        return (seedLil,waterLilDiff),(maskSeedLil,maskLilDiff)
     except IOError:
-        overwriteLil=None
-    
-    return seedLil,waterLilDiff,overwriteLil
+        return (seedLil,waterLilDiff),None
 
 def ScrubCellID(sws4D,sh,cellID):
     '''Super-slow value clear...'''

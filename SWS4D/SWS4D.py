@@ -44,6 +44,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     mouseInteraction=Enum(mouseInteractionModes)
     watershedButton = Button('Run Watershed')
     #updateSeedArr_tButton = Button('UpdateSeedArr_t')
+    useTissueSeg = Bool(False)
     volumeRenderButton = Button('VolumeRender')
     saveButton = Button('Save')
     loadButton = Button('Load')
@@ -57,7 +58,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
              Item('sceneWater', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
             ),
             Group('xindex','yindex','zindex','tindex','vmin','vmax','overlayOpacity','mouseInteraction',
-             HGroup('watershedButton','nextSeedValue','volumeRenderButton'),#'updateSeedArr_tButton'),
+             HGroup('watershedButton','nextSeedValue','useTissueSeg','volumeRenderButton'),#'updateSeedArr_tButton'),
              HGroup('saveButton','loadButton','tempButton')
             )
            ), resizable=True,title='SeedWaterSegmenter 4D')
@@ -69,15 +70,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         
         # Only really store the waterLilDiffs (see coo_utils for conversions to array)
         # This is NOT the same thing as the SWS3D woutline...
-        self.waterLilDiff = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.int32) # This needs to be able to go negative...
-                               for j in range(self.shape[1]) ]
-                             for i in range(self.shape[0]) ]
-        self.seedLil = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.uint16)
-                          for j in range(self.shape[1]) ]
-                        for i in range(self.shape[0]) ]
-        self.overwriteLil = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.uint16)
-                               for j in range(self.shape[1]) ]
-                             for i in range(self.shape[0]) ]
+        self.ClearSeedsAndWatershed()
+        self.ClearMask()
         
         self.waterArr = np.zeros(self.shape,dtype=np.int32)
         #self.seedArr_t = np.zeros(self.shape[1:],dtype=np.int32)
@@ -89,6 +83,22 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         
         self.lastPos=None
         self.lastPos2=None
+    def ClearSeedsAndWatershed(self):
+        '''Initialize seeds and watershed to empty lil_matrices'''
+        self.seedLil = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.uint16)
+                          for j in range(self.shape[1]) ]
+                        for i in range(self.shape[0]) ]
+        self.waterLilDiff = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.int32) # This needs to be able to go negative...
+                               for j in range(self.shape[1]) ]
+                             for i in range(self.shape[0]) ]
+    def ClearMask(self):
+        '''Initialize mask seeds and watershed to empty lil_matrices'''
+        self.maskSeedLil = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.uint16)
+                              for j in range(self.shape[1]) ]
+                            for i in range(self.shape[0]) ]
+        self.maskLilDiff = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.uint16)
+                              for j in range(self.shape[1]) ]
+                            for i in range(self.shape[0]) ]
     def SetMapPlotColormap(self,plots,clearBG=False):
         '''Secret sauce to display the map plot and make it look like SWS'''
         from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
@@ -106,6 +116,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         for view in ['XY','XZ','YZ']:
             def genMC(view):
                 def mouseClick(obj, evt):
+                    seedLil = (self.seedLil if not self.useTissueSeg else self.maskSeedLil)
                     position = obj.GetCurrentCursorPosition()
                     # pos = map(int,position); pos[2] = self.zindex
                     if view=='XY':
@@ -125,7 +136,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                         self.tindex,self.zindex,self.yindex,self.xindex = pos
                     elif self.mouseInteraction in ['doodle','line','plane']:
                         print self.mouseInteraction,position,pos
-                        self.seedLil[pos[0]][pos[1]][pos[2],pos[3]] = self.nextSeedValue
+                        seedLil[pos[0]][pos[1]][pos[2],pos[3]] = self.nextSeedValue
                         #self.seedArr_t[pos[1],pos[2],pos[3]] = self.nextSeedValue
                         #self.plots['XY'].mlab_source.scalars[pos[0],pos[1]] = self.nextSeedValue
                         
@@ -150,7 +161,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                             
                             #self.seedArr[self.tindex,points[:,2],points[:,0],points[:,1]] = self.nextSeedValue
                             for p in points:
-                                self.seedLil[p[0]][p[1]][p[2],p[3]] = self.nextSeedValue
+                                seedLil[p[0]][p[1]][p[2],p[3]] = self.nextSeedValue
                                 #if p[0]==self.tindex:
                                 #    self.seedArr_t[p[1],p[2],p[3]]=self.nextSeedValue
                         
@@ -173,7 +184,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                         #    #del(self.switch)
                         #else:
                         #    print 'lil'
-                        self.update_all_plots(self.seedLil[self.tindex],self.plots[1])
+                        self.update_all_plots(seedLil[self.tindex],self.plots[1])
                         #    #self.switch=None
                         print time.time()-ti
                 return mouseClick
@@ -181,6 +192,13 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             plots[view].ipw.add_observer('InteractionEvent', genMC(view))
             plots[view].ipw.add_observer('StartInteractionEvent', genMC(view))
     
+    def GetMaskOutlineForWatershed(self):
+        '''Get the outline array from the mask '''
+        maskArr = coo_utils.CooDiffToArray(self.maskLilDiff[self.tindex])-1 # make background 0 and foreground 1
+        # Dilate-Erode
+        maskOutline = ( scipy.ndimage.binary_dilation(maskArr) - scipy.ndimage.binary_erosion(maskArr) )
+        # Set to second-to-maximum value for uint16 (maximum is used to block watershed which is not what we want)
+        return maskOutline.astype(np.uint16)*(2**16-2)
     def RunWatershed(self,index='all'):
         tList = ( range(self.shape[0]) if index=='all' else [index] )
         for t in tList:
@@ -188,14 +206,17 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             seedArr_t = self.getSeedArr_t(t)
             arr = self.arr[t]
             for z in range(self.shape[1]):
-                # if there is any overwriter masking for this stack, then use it
+                # if there is any masking for this stack, then use it
                 # (and otherwise skip it...)
-                if self.overwriteLil[t][z].nnz>0:
-                    arr = np.maximum(coo_utils.CooHDToArray(self.overwriteLil[t]),arr)
-                    break
+                if not self.useTissueSeg:
+                    if self.maskLilDiff[t][z].nnz>0:
+                        arr = np.maximum( arr , self.GetMaskOutlineForWatershed() )
+                        break
             
             self.waterArr[t] = mahotas.cwatershed(arr,seedArr_t)
             self.updateWaterLilDiff(t)
+            if self.useTissueSeg:
+                print 'Whole Tissue',
             print 'Watershed on frame',t
         self.lastPos=None
     @on_trait_change('scene.activated')
@@ -245,20 +266,24 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                 plots['XY'].mlab_source.scalars = arr_t[self.zindex].toarray().astype(np.int32)
     #def getWaterArr_t_z(self):
     #    # This should be the inner function in updateWaterArr_t
-    #    return coo_utils.CooDiffToArray( self.waterLilDiff[self.tindex][self.zindex].toarray() ).astype(np.uint16)
+    #    waterLilDiff = (self.waterLilDiff if not self.useTissueSeg else self.maskLilDiff)
+    #    return coo_utils.CooDiffToArray( waterLilDiff[self.tindex][self.zindex] )
     def updateWaterArr(self):
+        waterLilDiff = (self.waterLilDiff if not self.useTissueSeg else self.maskLilDiff)
         for t in range(self.shape[0]):
-            self.waterArr[t] = coo_utils.CooDiffToArray( self.waterLilDiff[t] )
+            self.waterArr[t] = coo_utils.CooDiffToArray( waterLilDiff[t] )
     #def updateSeedArr_t(self,tindex=None):
     def getSeedArr_t(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
-        return coo_utils.CooHDToArray( self.seedLil[tindex], dtype=np.int32)
+        seedLil = (self.seedLil if not self.useTissueSeg else self.maskSeedLil)
+        return coo_utils.CooHDToArray( seedLil[tindex], dtype=np.int32)
         #self.useSeedArr_t = True
     def updateWaterLilDiff(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
-        self.waterLilDiff[tindex] = coo_utils.ArrayToCooDiff( self.waterArr[tindex] )
+        waterLilDiff = (self.waterLilDiff if not self.useTissueSeg else self.maskLilDiff)
+        waterLilDiff[tindex] = coo_utils.ArrayToCooDiff( self.waterArr[tindex] )
     #def update_seeds_overlay(self):
     #    import time
     #    t=time.time()
@@ -281,11 +306,19 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     def watershedButtonCallback(self):
         self.RunWatershed(index = self.tindex)
         # waterArr_t and seedArr_t are updated in RunWatershed
-        self.update_all_plots(self.seedLil[self.tindex],self.plots[1])
+        seedLil = (self.seedLil if not self.useTissueSeg else self.maskSeedLil)
+        self.update_all_plots(seedLil[self.tindex],self.plots[1])
         self.update_all_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_all_contours()
     @on_trait_change('nextSeedValue')
-    def resetLine(self):
+    def nextSeedValue_cb(self):
+        '''Three actions:
+             Limit potential values to 0,1,2 in tissue mode
+             Reset line/plane mousing
+             Plot contour for the new value'''
+        # adding functionality to reset to 0,1, or 2 if in tissue mode
+        if self.useTissueSeg and self.nextSeedValue>2:
+            self.nextSeedValue = 2
         self.lastPos = None
         self.update_all_contours()
     @on_trait_change('mouseInteraction')
@@ -315,7 +348,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         #if self.useSeedArr_t:
         #    self.update_x_plots(self.seedArr_t,self.plots[1])
         #else:
-        self.update_x_plots(self.seedLil[self.tindex],self.plots[1])
+        seedLil = (self.seedLil if not self.useTissueSeg else self.maskSeedLil)
+        self.update_x_plots(seedLil[self.tindex],self.plots[1])
         self.update_x_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_x_cursors()
         self.update_x_contours()
@@ -325,7 +359,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         #if self.useSeedArr_t:
         #    self.update_y_plots(self.seedArr_t,self.plots[1])
         #else:
-        self.update_y_plots(self.seedLil[self.tindex],self.plots[1])
+        seedLil = (self.seedLil if not self.useTissueSeg else self.maskSeedLil)
+        self.update_y_plots(seedLil[self.tindex],self.plots[1])
         self.update_y_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_y_cursors()
         self.update_y_contours()
@@ -335,7 +370,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         #if self.useSeedArr_t:
         #    self.update_z_plots(self.seedArr_t,self.plots[1])
         #else:
-        self.update_z_plots(self.seedLil[self.tindex],self.plots[1])
+        seedLil = (self.seedLil if not self.useTissueSeg else self.maskSeedLil)
+        self.update_z_plots(seedLil[self.tindex],self.plots[1])
             # This is quirky, but it should work ok...
             # good compromise...certainly a lot faster!!!
             #self.plots[2]['XY'].mlab_source.scalars = self.getWaterArr_t_z()
@@ -348,7 +384,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     def update_all_plots_cb(self):
         self.update_all_plots(self.arr[self.tindex],self.plots[0])
         #self.useSeedArr_t=False
-        self.update_all_plots(self.seedLil[self.tindex],self.plots[1])
+        seedLil = (self.seedLil if not self.useTissueSeg else self.maskSeedLil)
+        self.update_all_plots(seedLil[self.tindex],self.plots[1])
         self.update_all_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_all_contours()
         # This is quirky, but it should work ok...
@@ -365,6 +402,15 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         #self.updateWaterArr_t()
         #self.update_all_plots(self.waterArr_t,self.plots[2])
     
+    @on_trait_change('useTissueSeg')
+    def switch_segmentation_modes(self):
+        '''Any time we switch modes, we need to swap out the whole waterArr
+        This is a trade-off which maintains fast t-motion while keeping down memory usage'''
+        self.updateWaterArr() # loops over all times...
+        self.update_all_plots_cb()
+        if self.nextSeedValue>2:
+            self.nextSeedValue=2
+    
     def Save(self,filename=None):
         print 'Save'
         filename = GetFileBasenameForSaveLoad(filename,saveDialog=True) # Overwrite protection ONLY IF FILENAME IS NONE!
@@ -372,8 +418,9 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             print 'Saving'
             coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.shape,filename+'_waterDiff',fromlil=True)
             coo_utils.SaveCooHDToRCDFile(self.seedLil,self.shape,filename+'_seeds',fromlil=True)
-            coo_utils.SaveCooHDToRCDFile(self.overwriteLil,self.shape,filename+'_overwriteMask',fromlil=True)
-    def Load(self,filename=None,sLwLD=None,overwriteMask=None):
+            coo_utils.SaveCooHDToRCDFile(self.maskLilDiff,self.shape,filename+'_maskDiff',fromlil=True)
+            coo_utils.SaveCooHDToRCDFile(self.maskSeedLil,self.shape,filename+'_maskSeeds',fromlil=True)
+    def Load(self,filename=None,sLwLD=None,sLwLD_mask=None):
         print 'Load'
         sh = self.shape
         shapeMatch=False
@@ -397,33 +444,35 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                 _, self.seedLil[:] = coo_utils.LoadRCDFileToCooHD(filename+'_seeds',tolil=True)
                 shapeMatch=True
         
-        if overwriteMask!=None:
-            if coo_utils.VerifyCooHDShape(overwriteMask,sh):
-                self.overwriteLil[:] = overwriteMask
+        if sLwLD_mask!=None:
+            maskSeedLil,maskLilDiff = sLwLD_mask  # unpack the list
+            if coo_utils.VerifyCooHDShape(maskSeedLil,sh) and coo_utils.VerifyCooHDShape(maskLilDiff,sh):
+                self.maskSeedLil[:] = maskSeedLil
+                self.maskLilDiff[:] = maskLilDiff
             else:
-                print 'OverwriteMask passed as argument is not the right shape!'
+                print 'Mask passed as argument is not the right shape!'
         elif filename!=None:
             # This should already be done above...
             #filename = GetFileBasenameForSaveLoad(filename)
             
-            if sum([os.path.exists(filename+'_overwriteMask'+i) for i in ('_rcd.npy','_nnzs.npy','_shape.txt')])==3:
-                shapeOM = coo_utils.GetShapeFromFile( filename+'_overwriteMask' )
-                if sh == shapeOM:
-                    _, self.overwriteLil[:] = coo_utils.LoadRCDFileToCooHD(filename+'_overwriteMask',tolil=True)
+            if sum( [ os.path.exists(filename+i+j)
+                     for i in ('_maskSeeds','_maskDiff')
+                     for j in ('_rcd.npy','_nnzs.npy','_shape.txt') ] )==6:
+                shapeMD = coo_utils.GetShapeFromFile( filename+'_maskDiff' )
+                shapeMS = coo_utils.GetShapeFromFile( filename+'_maskSeeds' )
+                if sh == shapeMD == shapeMS:
+                    _, self.maskLilDiff[:] = coo_utils.LoadRCDFileToCooHD(filename+'_maskDiff',tolil=True)
+                    _, self.maskSeedLil[:] = coo_utils.LoadRCDFileToCooHD(filename+'_maskSeeds',tolil=True)
                 else:
-                    print 'overwriteMask file is the wrong shape! Ignoring!'
+                    print 'Mask file(s) are the wrong shape! Ignoring!'
             else:
-                print 'Cannot find overwriteMask, clear the mask instead'
-                for t in range(self.shape[0]):
-                    for z in range(self.shape[1]):
-                        if self.overwriteLil[t][z].nnz>0:
-                            self.overwriteLil[t][z][:,:]=0
+                print 'Cannot find mask, clear the mask instead'
+                self.ClearMask()
         
         if not shapeMatch:
             wx.MessageBox('Shapes do not match!!!!!\n'+repr([self.shape,shapeWD,shapeS]))
             return
-            
-        #self.updateSeedArr_t()
+        
         self.updateWaterArr()
     @on_trait_change('saveButton')
     def OnSave(self):
