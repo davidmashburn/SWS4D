@@ -204,10 +204,14 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     def GetMaskOutlineForWatershed(self):
         '''Get the outline array from the mask '''
         maskArr = coo_utils.CooDiffToArray(self.maskLilDiff[self.tindex])-1 # make background 0 and foreground 1
+        maskOutline = scipy.ndimage.binary_dilation(maskArr,iterations=2) - maskArr
+        return maskOutline.astype(np.uint16)*(2**16-1)
+        
+        #OLD -- 
         # Dilate-Erode
-        maskOutline = ( scipy.ndimage.binary_dilation(maskArr) - scipy.ndimage.binary_erosion(maskArr) )
+        # maskOutline = scipy.ndimage.binary_dilation(maskArr) - scipy.ndimage.binary_erosion(maskArr)
         # Set to second-to-maximum value for uint16 (maximum is used to block watershed which is not what we want)
-        return maskOutline.astype(np.uint16)*(2**16-2)
+        
     def RunWatershed(self,index='all'):
         tList = ( range(self.shape[0]) if index=='all' else [index] )
         for t in tList:
@@ -220,6 +224,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                 if not self.useTissueSeg:
                     if self.maskLilDiff[t][z].nnz>0:
                         arr = np.maximum( arr , self.GetMaskOutlineForWatershed() )
+                        arr[ np.where(arr==0) ] = 1 # if there are any blocked sites, convert to background...
                         break
             
             self.waterArr_t[:] = mahotas.cwatershed(arr,seedArr_t)

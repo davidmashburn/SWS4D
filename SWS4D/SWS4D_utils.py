@@ -22,7 +22,7 @@ def GetFileBasenameForSaveLoad(f=None,saveDialog=False):
     for i in ['_nnzs.npy','_rcd.npy','_shape.txt']:
         if f[-len(i):]==i:
             f = f[:-len(i)]
-    for i in ['_waterDiff','_seeds','_overwriteMask']:
+    for i in ['_waterDiff','_seeds','_maskSeeds','_maskDiff']:
         if f[-len(i):]==i:
             f = f[:-len(i)]
     return f
