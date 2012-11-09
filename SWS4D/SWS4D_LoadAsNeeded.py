@@ -201,9 +201,11 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             plots[view].ipw.add_observer('InteractionEvent', genMC(view))
             plots[view].ipw.add_observer('StartInteractionEvent', genMC(view))
     
-    def GetMaskOutlineForWatershed(self):
+    def GetMaskOutlineForWatershed(self,tindex=None):
         '''Get the outline array from the mask '''
-        maskArr = coo_utils.CooDiffToArray(self.maskLilDiff[self.tindex])-1 # make background 0 and foreground 1
+        if tindex==None:
+            tindex = self.tindex
+        maskArr = coo_utils.CooDiffToArray(self.maskLilDiff[tindex])-1 # make background 0 and foreground 1
         maskOutline = scipy.ndimage.binary_dilation(maskArr,iterations=2) - maskArr
         return maskOutline.astype(np.uint16)*(2**16-1)
         
@@ -223,7 +225,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                 # (and otherwise skip it...)
                 if not self.useTissueSeg:
                     if self.maskLilDiff[t][z].nnz>0:
-                        arr = np.maximum( arr , self.GetMaskOutlineForWatershed() )
+                        arr = np.maximum( arr , self.GetMaskOutlineForWatershed(t) )
                         arr[ np.where(arr==0) ] = 1 # if there are any blocked sites, convert to background...
                         break
             
