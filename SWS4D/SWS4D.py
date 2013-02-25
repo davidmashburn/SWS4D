@@ -26,6 +26,13 @@ from SWS4D_utils import GetFileBasenameForSaveLoad,LoadMostRecentSegmentation
 
 mouseInteractionModes = ['print','doodle','erase','line','plane','move']
 
+# Cross elements define the connectivity with which watersheds "flow"
+# These are the defaults in 2D and 3D respectively:
+#cross2D = mahotas.get_structuring_elem( np.zeros([3,3]),   1 )
+#cross3D = mahotas.get_structuring_elem( np.zeros([3,3,3]), 1 )
+# ...and this is for running 2D watershed on 3D data:
+#cross2D_t = cross2D[None] # this just adds an outer dimension
+
 class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     # store the full waterArr and seedArr as cooHD's (actually lil_matrix format) instead
     #seedArr_t = Array(shape=[None]*3)
@@ -205,7 +212,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         # maskOutline = scipy.ndimage.binary_dilation(maskArr) - scipy.ndimage.binary_erosion(maskArr)
         # Set to second-to-maximum value for uint16 (maximum is used to block watershed which is not what we want)
         
-    def RunWatershed(self,index='all'):
+    def RunWatershed(self,index='all',use2D=False):
         tList = ( range(self.shape[0]) if index=='all' else [index] )
         for t in tList:
             #self.updateSeedArr_t(t)
@@ -220,7 +227,10 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                         arr[ np.where(arr==0) ] = 1 # if there are any blocked sites, convert to background...
                         break
             
-            self.waterArr[t] = mahotas.cwatershed(arr,seedArr_t)
+            Bc = ( np.array([[[0,1,0],[1,1,1],[0,1,0]]]) if use2D else None )
+            #Bc = ( mahotas.get_structuring_elem(np.zeros([3,3]),1)[None] if use2D else None ) # same thing, just longer
+            self.waterArr[t] = mahotas.cwatershed( arr,seedArr_t,Bc )
+            
             self.updateWaterLilDiff(t)
             if self.useTissueSeg:
                 print 'Whole Tissue',
