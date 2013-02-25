@@ -52,6 +52,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     watershedButton = Button('Run Watershed')
     #updateSeedArr_tButton = Button('UpdateSeedArr_t')
     useTissueSeg = Bool(False)
+    use2D = Bool(False)
     volumeRenderButton = Button('VolumeRender')
     saveButton = Button('Save')
     loadButton = Button('Load')
@@ -65,7 +66,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
              Item('sceneWater', editor=SceneEditor(scene_class=MayaviScene), height=600, width=600, show_label=False),
             ),
             Group('xindex','yindex','zindex','tindex','vmin','vmax','overlayOpacity','mouseInteraction',
-             HGroup('watershedButton','nextSeedValue','useTissueSeg','volumeRenderButton'),#'updateSeedArr_tButton'),
+             HGroup('watershedButton','nextSeedValue','useTissueSeg','use2D','volumeRenderButton'),#'updateSeedArr_tButton'),
              HGroup('saveButton','loadButton','tempButton')
             )
            ), resizable=True,title='SeedWaterSegmenter 4D')
@@ -232,6 +233,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             self.waterArr[t] = mahotas.cwatershed( arr,seedArr_t,Bc )
             
             self.updateWaterLilDiff(t)
+            if self.use2D:
+                print 'Using 2D Watershed... warning! This can lead to uninitialized values if there are no seeds on a frame',
             if self.useTissueSeg:
                 print 'Whole Tissue',
             print 'Watershed on frame',t
@@ -321,7 +324,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             self.cursors[1][i].actor.visible = (self.overlayOpacity>0)
     @on_trait_change('watershedButton')
     def watershedButtonCallback(self):
-        self.RunWatershed(index = self.tindex)
+        self.RunWatershed(index = self.tindex,use2D = self.use2D)
         # waterArr_t and seedArr_t are updated in RunWatershed
         seedLil = (self.seedLil if not self.useTissueSeg else self.maskSeedLil)
         self.update_all_plots(seedLil[self.tindex],self.plots[1])
