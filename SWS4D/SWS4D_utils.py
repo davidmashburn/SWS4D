@@ -80,7 +80,7 @@ def CopySeedRegionsToAllFrames(sws4d,valsToCopy,t=0,z=0):
                 a[whs[k]] = v
             sws4d.seedLil[i][j] = coo_utils.ArrayToCooHD(a)
 
-def LoadSWS_as_sLwLD(d):
+def LoadSWS_as_sLwLD(d,addBoundarySeeds=True):
     '''Load a Seeds.py and Segments folder and convert them to seedLil and waterLilDiff
        Loading code adapted from SWS.WatershedData.Open'''
     segmentsD = os.path.join(d,'Segments')
@@ -91,7 +91,7 @@ def LoadSWS_as_sLwLD(d):
     assert len(Seeds.seedList)==len(Seeds.seedVals), 'Corrupt Seeds.py file! seedList and seedVals must be the same length!!!'
     assert len(Seeds.seedList)>=len(waterArr), 'Seeds.py file must have at least as many frames as Segments directory!'
     
-    shape = len(Seeds.seedList),waterArr.shape[1:] # get the shape of the whole dataset
+    shape = (len(Seeds.seedList),)+waterArr.shape[1:] # get the shape of the whole dataset
     
     # Build the waterLilDiff and pad it to be the same size as seedLil (below)
     waterLilDiff = coo_utils.ArrayToCooDiff(waterArr,dtype=np.uint16,tolil=True)
@@ -109,7 +109,13 @@ def LoadSWS_as_sLwLD(d):
             vals = Seeds.seedVals[i]
             seedLil[i] = scipy.sparse.coo_matrix((vals,(row,col)), shape=shape[1:], dtype=np.uint16).tolil()
     
-    return [seedLil],[waterLilDiff],[1]+shape # convert from xyz to xyzt with one time point
+        if addBoundarySeeds:
+            seedLil[i][0,:]  = 1
+            seedLil[i][-1,:] = 1
+            seedLil[i][:,0]  = 1
+            seedLil[i][:,-1] = 1
+    
+    return [seedLil],[waterLilDiff],(1,)+shape # convert from xyz to xyzt with one time point
     
 def ConvertSWSToSWS4D(d,outputBaseName=None):
     '''Convert a Seeds.py and Segments folder to seedLil and waterLilDiff files
