@@ -501,11 +501,14 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     def OnLoad(self):
         self.Load()
         self.update_all_plots_cb()
-    def GetSubArray(self,val):
+    def GetSubArrayExtent(self,val):
         wh = np.where(self.waterArr==val)
         zmin,zmax = min(wh[1]),max(wh[1])
         ymin,ymax = min(wh[2]),max(wh[2])
         xmin,xmax = min(wh[3]),max(wh[3])
+        return (zmin,zmax),(ymin,ymax),(xmin,xmax)
+    def GetSubArray(self,val):
+        (zmin,zmax),(ymin,ymax),(xmin,xmax) = self.GetSubArrayExtent(val)
         return (self.waterArr[:,zmin:zmax+1,ymin:ymax+1,xmin:xmax+1]==val).astype(np.int32)
     
     @on_trait_change('volumeRenderButton')
