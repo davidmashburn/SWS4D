@@ -48,21 +48,41 @@ class ArrayViewVolume(HasTraits):
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 Group('tindex'), resizable=True)
     
-    def __init__(self,arr,vmin=None,vmax=None,**traits):
+    def __init__(self,arr,vmin=None,vmax=None,rgbaColor=None,**traits):
         HasTraits.__init__(self,arr=arr,**traits) # Call __init__ on the super
         self.shape = arr.shape
         self.vmin = (arr.min() if vmin==None else vmin)
         self.vmax = (arr.max() if vmax==None else vmax)
+        self.rgbaColor = rgbaColor
     
     @on_trait_change('scene.activated')
     def make_plot(self):
         x,y,z = np.mgrid[:self.shape[3],:self.shape[2],:self.shape[1]]
         z*=self.zscale
         self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(x,y,z,self.arr[self.tindex].transpose()), vmin=self.vmin, vmax=self.vmax)
+        
+        if self.rgbaColor!=None:
+            self.setColor(self.rgbaColor[:3],self.rgbaColor[-1])
     
     @on_trait_change('tindex')
     def update_plot(self):
         self.vPlot.mlab_source.scalars = self.arr[self.tindex].transpose()
+    
+    def setColor(self,rgb,opacity):
+        '''Change the opacity and color transfer functions to be one color with an alpha gradient'''
+        ctfS = self.vPlot._ctf._get_size()
+        for i in range(ctfS):
+            v =[0,0,0,0,0,0]
+            _=self.vPlot._ctf.get_node_value(i,v)
+            v[1:4] = rgb
+            self.vPlot._ctf.set_node_value(i,v)
+        otfS = self.vPlot._otf._get_size()
+        for i in range(otfS):
+            v =[0,0,0,0]
+            _=self.vPlot._otf.get_node_value(i,v)
+            v[1] = opacity*i*1./otfS
+            self.vPlot._otf.set_node_value(i,v)
+
 
 # This class is the heart of the code; in fact, it contains 90% of what
 # is needed for ArrayView4DDual as well.
@@ -241,6 +261,12 @@ class ArrayView4D(HasTraits):
     @on_trait_change('tindex')
     def update_all_plots_cb(self):
         self.update_all_plots(self.arr,self.plots[0])
+    def set_cursor_size(self,size,cursorIndex=None,cursorsToUpdate=('x','y','zx','zy')):
+        cursorInds = ( range(len(self.cursors)) if cursorIndex==None else
+                       [cursorIndex] )
+        for i in cursorInds:
+            for c in cursorsToUpdate:
+                self.cursors[i][c].parent.parent.filter.radius=size
 
 # Same as ArrayView4D but adding vmin and vmax sliders
 class ArrayView4DVminVmax(ArrayView4D):
