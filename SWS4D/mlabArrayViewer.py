@@ -48,12 +48,13 @@ class ArrayViewVolume(HasTraits):
     view = View(Item('scene', editor=SceneEditor(scene_class=MayaviScene), height=250, width=300, show_label=False),
                 Group('tindex'), resizable=True)
     
-    def __init__(self,arr,vmin=None,vmax=None,rgbaColor=None,**traits):
+    def __init__(self,arr,vmin=None,vmax=None,rgbColor=None,opacity=0.2,**traits):
         HasTraits.__init__(self,arr=arr,**traits) # Call __init__ on the super
         self.shape = arr.shape
         self.vmin = (arr.min() if vmin==None else vmin)
         self.vmax = (arr.max() if vmax==None else vmax)
-        self.rgbaColor = rgbaColor
+        self.rgbColor = rgbColor
+        self.opacity=opacity
     
     @on_trait_change('scene.activated')
     def make_plot(self):
@@ -61,27 +62,34 @@ class ArrayViewVolume(HasTraits):
         z*=self.zscale
         self.vPlot = self.scene.mlab.pipeline.volume(mlab.pipeline.scalar_field(x,y,z,self.arr[self.tindex].transpose()), vmin=self.vmin, vmax=self.vmax)
         
-        if self.rgbaColor!=None:
-            self.setColor(self.rgbaColor[:3],self.rgbaColor[-1])
+        if self.rgbColor!=None:
+            self.setColor(self.rgbColor,self.opacity)
     
     @on_trait_change('tindex')
     def update_plot(self):
         self.vPlot.mlab_source.scalars = self.arr[self.tindex].transpose()
     
-    def setColor(self,rgb,opacity):
-        '''Change the opacity and color transfer functions to be one color with an alpha gradient'''
-        ctfS = self.vPlot._ctf._get_size()
-        for i in range(ctfS):
-            v =[0,0,0,0,0,0]
-            _=self.vPlot._ctf.get_node_value(i,v)
-            v[1:4] = rgb
-            self.vPlot._ctf.set_node_value(i,v)
-        otfS = self.vPlot._otf._get_size()
-        for i in range(otfS):
-            v =[0,0,0,0]
-            _=self.vPlot._otf.get_node_value(i,v)
-            v[1] = opacity*i*1./otfS
-            self.vPlot._otf.set_node_value(i,v)
+    def setColor(self,rgb,opacity,scaleBy255=True):
+        '''Change the opacity and color transfer functions to be one color with an alpha gradient from 0 to 1'''
+        if scaleBy255:
+            rgb = [i/255. for i in rgb]
+        self.vPlot._ctf.remove_all_points()
+        self.vPlot._otf.remove_all_points()
+        for i in range(2):
+            _=self.vPlot._ctf.add_rgb_point(i,rgb[0],rgb[1],rgb[2],0.5,0)
+        _=self.vPlot._otf.add_point(0,0)
+        _=self.vPlot._otf.add_point(1,opacity)
+    def set_CTF_and_OTF_from_rgb_array(self,rgbArray,opacity,scaleBy255=True,clipBelow2=True):
+        '''Use an rgb array and an opacity value to reset the ctf and otf
+           Basically an easy way to change the colormap of a volume'''
+        if scaleBy255:
+            rgbArray = rgbArray/255.
+        self.vPlot._ctf.remove_all_points()
+        self.vPlot._otf.remove_all_points()
+        for i in range(min(rgbArray.shape[1],256)): # should I stop at 256 points? Probably...
+            _=self.vPlot._ctf.add_rgb_point(i,rgbArray[0,i],rgbArray[1,i],rgbArray[2,i],0.5,0)
+            op = (0 if (i<2 and clipBelow2) else opacity)
+            _=self.vPlot._otf.add_point(i,op)
 
 
 # This class is the heart of the code; in fact, it contains 90% of what
