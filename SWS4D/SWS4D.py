@@ -18,7 +18,7 @@ import mahotas
 
 #import np_utils
 #reload(np_utils)
-from np_utils import BresenhamFunction,BresenhamTriangle,circs,shprs
+from np_utils import BresenhamFunction,BresenhamTriangle,totuple,circs,shprs
 import coo_utils
 
 from mlabArrayViewer import ArrayViewVolume,ArrayView4D,ArrayView4DVminVmax,ArrayView4DDual
@@ -156,15 +156,19 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                             else:
                                 points=[]
                             
-                            pointsExp = []
-                            for p in points:
-                                #if 0<=p[2]<self.shape[1]-1 and 0<=p[0]<self.shape[2]-1 and 0<=p[1]<self.shape[3]-1:
-                                if 0<=p[0]<self.shape[0] and 0<=p[1]<self.shape[1] and 0<=p[2]<self.shape[2]-1 and 0<=p[2]<self.shape[2]-1:
-                                    for i in range(2):
-                                        for j in range(2):
-                                            #for k in range(2): # Lose the z fiddle... too confusing
-                                                #points.append((p[0]+i,p[1]+j,p[2]+k))
-                                                pointsExp.append((p[0],p[1],p[2]+i,p[3]+j))
+                            EXPAND_POINTS=False
+                            if EXPAND_POINTS:
+                                pointsExp = []
+                                for p in points:
+                                    #if 0<=p[2]<self.shape[1]-1 and 0<=p[0]<self.shape[2]-1 and 0<=p[1]<self.shape[3]-1:
+                                    if 0<=p[0]<self.shape[0] and 0<=p[1]<self.shape[1] and 0<=p[2]<self.shape[2]-1 and 0<=p[2]<self.shape[2]-1:
+                                        for i in range(2):
+                                            for j in range(2):
+                                                #for k in range(2): # Lose the z fiddle... too confusing
+                                                    #points.append((p[0]+i,p[1]+j,p[2]+k))
+                                                    pointsExp.append((p[0],p[1],p[2]+i,p[3]+j))
+                            else:
+                                pointsExp = totuple(points)
                             points = np.array(list(set(pointsExp)))
                             
                             #self.seedArr[self.tindex,points[:,2],points[:,0],points[:,1]] = self.nextSeedValue
