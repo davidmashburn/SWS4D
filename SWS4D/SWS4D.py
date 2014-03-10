@@ -34,6 +34,87 @@ mouseInteractionModes = ['print','doodle','erase','line','plane','move']
 # ...and this is for running 2D watershed on 3D data:
 #cross2D_t = cross2D[None] # this just adds an outer dimension
 
+def generateMouseClickFunction(sws4d,plots,view):
+    '''Generate a mouse click function for a particular plot
+       This defines the core of the mouse click interactions'''
+    def mouseClick(obj, evt):
+        seedLil = (sws4d.seedLil if not sws4d.useTissueSeg else sws4d.maskSeedLil)
+        position = obj.GetCurrentCursorPosition()
+        # pos = map(int,position); pos[2] = sws4d.zindex
+        if view=='XY':
+            pos = [sws4d.tindex,sws4d.zindex,int(position[0]),int(position[1])]
+        elif view=='XZ':
+            pos = [sws4d.tindex,int(position[0]),sws4d.yindex,int(position[1])]
+        elif view=='YZ':
+            pos = [sws4d.tindex,int(position[1]),int(position[0]),sws4d.xindex]
+        
+        if sws4d.mouseInteraction not in mouseInteractionModes:
+            print 'ERROR! UNSUPPORTED MODE!'
+            return
+        elif sws4d.mouseInteraction=='print':
+            print position,pos
+        elif sws4d.mouseInteraction=='move':
+            print sws4d.mouseInteraction,position,pos
+            sws4d.tindex,sws4d.zindex,sws4d.yindex,sws4d.xindex = pos
+        elif sws4d.mouseInteraction in ['doodle','line','plane']:
+            print sws4d.mouseInteraction,position,pos
+            seedLil[pos[0]][pos[1]][pos[2],pos[3]] = sws4d.nextSeedValue
+            #sws4d.seedArr_t[pos[1],pos[2],pos[3]] = sws4d.nextSeedValue
+            #sws4d.plots['XY'].mlab_source.scalars[pos[0],pos[1]] = sws4d.nextSeedValue
+            
+            if sws4d.lastPos!=None:
+                if sws4d.mouseInteraction == 'line':
+                    points = BresenhamFunction(pos,sws4d.lastPos)
+                elif sws4d.mouseInteraction == 'plane':
+                    points = BresenhamTriangle(pos,sws4d.lastPos,sws4d.lastPos2)
+                else:
+                    points=[]
+                
+                EXPAND_POINTS=False
+                if EXPAND_POINTS:
+                    pointsExp = []
+                    for p in points:
+                        #if 0<=p[2]<sws4d.shape[1]-1 and 0<=p[0]<sws4d.shape[2]-1 and 0<=p[1]<sws4d.shape[3]-1:
+                        if 0<=p[0]<sws4d.shape[0] and 0<=p[1]<sws4d.shape[1] and 0<=p[2]<sws4d.shape[2]-1 and 0<=p[2]<sws4d.shape[2]-1:
+                            for i in range(2):
+                                for j in range(2):
+                                    #for k in range(2): # Lose the z fiddle... too confusing
+                                        #points.append((p[0]+i,p[1]+j,p[2]+k))
+                                        pointsExp.append((p[0],p[1],p[2]+i,p[3]+j))
+                else:
+                    pointsExp = totuple(points)
+                points = np.array(list(set(pointsExp)))
+                
+                #sws4d.seedArr[sws4d.tindex,points[:,2],points[:,0],points[:,1]] = sws4d.nextSeedValue
+                for p in points:
+                    seedLil[p[0]][p[1]][p[2],p[3]] = sws4d.nextSeedValue
+                    #if p[0]==sws4d.tindex:
+                    #    sws4d.seedArr_t[p[1],p[2],p[3]]=sws4d.nextSeedValue
+            
+            if sws4d.mouseInteraction == 'line' and not np.sum(sws4d.lastPos!=pos)==0:
+                sws4d.lastPos = pos
+            elif sws4d.mouseInteraction == 'plane' and not np.sum(sws4d.lastPos!=pos)==0:
+                sws4d.lastPos, sws4d.lastPos2 = pos, sws4d.lastPos
+        
+        elif sws4d.mouseInteraction=='erase': # erase mode
+            print 'Erase',position
+        
+        if sws4d.mouseInteraction!='print':
+            plots[view].mlab_source.scalars = plots[view].mlab_source.scalars
+            #sws4d.update_seeds_overlay()
+            import time
+            ti = time.time()
+            #if sws4d.useSeedArr_t:#hasattr(sws4d,'switch'):
+            #    print 'arr'
+            #    sws4d.update_all_plots(sws4d.seedArr_t,sws4d.plots[1]) 
+            #    #del(sws4d.switch)
+            #else:
+            #    print 'lil'
+            sws4d.update_all_plots(seedLil[sws4d.tindex],sws4d.plots[1])
+            #    #sws4d.switch=None
+            print time.time()-ti
+    return mouseClick
+
 class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     # store the full waterArr and seedArr as cooHD's (actually lil_matrix format) instead
     #seedArr_t = Array(shape=[None]*3)
@@ -126,87 +207,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     def AddMouseInteraction(self,plots):
         '''Bind the mouse interactions'''
         for view in ['XY','XZ','YZ']:
-            def genMC(view):
-                def mouseClick(obj, evt):
-                    seedLil = (self.seedLil if not self.useTissueSeg else self.maskSeedLil)
-                    position = obj.GetCurrentCursorPosition()
-                    # pos = map(int,position); pos[2] = self.zindex
-                    if view=='XY':
-                        pos = [self.tindex,self.zindex,int(position[0]),int(position[1])]
-                    elif view=='XZ':
-                        pos = [self.tindex,int(position[0]),self.yindex,int(position[1])]
-                    elif view=='YZ':
-                        pos = [self.tindex,int(position[1]),int(position[0]),self.xindex]
-                    
-                    if self.mouseInteraction not in mouseInteractionModes:
-                        print 'ERROR! UNSUPPORTED MODE!'
-                        return
-                    elif self.mouseInteraction=='print':
-                        print position,pos
-                    elif self.mouseInteraction=='move':
-                        print self.mouseInteraction,position,pos
-                        self.tindex,self.zindex,self.yindex,self.xindex = pos
-                    elif self.mouseInteraction in ['doodle','line','plane']:
-                        print self.mouseInteraction,position,pos
-                        seedLil[pos[0]][pos[1]][pos[2],pos[3]] = self.nextSeedValue
-                        #self.seedArr_t[pos[1],pos[2],pos[3]] = self.nextSeedValue
-                        #self.plots['XY'].mlab_source.scalars[pos[0],pos[1]] = self.nextSeedValue
-                        
-                        if self.lastPos!=None:
-                            if self.mouseInteraction == 'line':
-                                points = BresenhamFunction(pos,self.lastPos)
-                            elif self.mouseInteraction == 'plane':
-                                points = BresenhamTriangle(pos,self.lastPos,self.lastPos2)
-                            else:
-                                points=[]
-                            
-                            EXPAND_POINTS=False
-                            if EXPAND_POINTS:
-                                pointsExp = []
-                                for p in points:
-                                    #if 0<=p[2]<self.shape[1]-1 and 0<=p[0]<self.shape[2]-1 and 0<=p[1]<self.shape[3]-1:
-                                    if 0<=p[0]<self.shape[0] and 0<=p[1]<self.shape[1] and 0<=p[2]<self.shape[2]-1 and 0<=p[2]<self.shape[2]-1:
-                                        for i in range(2):
-                                            for j in range(2):
-                                                #for k in range(2): # Lose the z fiddle... too confusing
-                                                    #points.append((p[0]+i,p[1]+j,p[2]+k))
-                                                    pointsExp.append((p[0],p[1],p[2]+i,p[3]+j))
-                            else:
-                                pointsExp = totuple(points)
-                            points = np.array(list(set(pointsExp)))
-                            
-                            #self.seedArr[self.tindex,points[:,2],points[:,0],points[:,1]] = self.nextSeedValue
-                            for p in points:
-                                seedLil[p[0]][p[1]][p[2],p[3]] = self.nextSeedValue
-                                #if p[0]==self.tindex:
-                                #    self.seedArr_t[p[1],p[2],p[3]]=self.nextSeedValue
-                        
-                        if self.mouseInteraction == 'line' and not np.sum(self.lastPos!=pos)==0:
-                            self.lastPos = pos
-                        elif self.mouseInteraction == 'plane' and not np.sum(self.lastPos!=pos)==0:
-                            self.lastPos, self.lastPos2 = pos, self.lastPos
-                    
-                    elif self.mouseInteraction=='erase': # erase mode
-                        print 'Erase',position
-                    
-                    if self.mouseInteraction!='print':
-                        plots[view].mlab_source.scalars = plots[view].mlab_source.scalars
-                        #self.update_seeds_overlay()
-                        import time
-                        ti = time.time()
-                        #if self.useSeedArr_t:#hasattr(self,'switch'):
-                        #    print 'arr'
-                        #    self.update_all_plots(self.seedArr_t,self.plots[1]) 
-                        #    #del(self.switch)
-                        #else:
-                        #    print 'lil'
-                        self.update_all_plots(seedLil[self.tindex],self.plots[1])
-                        #    #self.switch=None
-                        print time.time()-ti
-                return mouseClick
-            
-            plots[view].ipw.add_observer('InteractionEvent', genMC(view))
-            plots[view].ipw.add_observer('StartInteractionEvent', genMC(view))
+            plots[view].ipw.add_observer('InteractionEvent', generateMouseClickFunction(self,plots,view))
+            plots[view].ipw.add_observer('StartInteractionEvent', generateMouseClickFunction(self,plots,view))
     
     def GetMaskOutlineForWatershed(self,tindex=None):
         '''Get the outline array from the mask '''
