@@ -179,19 +179,6 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                 BresenhamTriangle(*operation.bresenhamPoints) if nBPts==3 else
                 None )
         assert pts!=None,'nPts is weird...'
-        
-        EXPAND_POINTS=False
-        if EXPAND_POINTS:
-            pts = []
-            for p in points:
-                #if 0<=p[2]<self.shape[1]-1 and 0<=p[0]<self.shape[2]-1 and 0<=p[1]<self.shape[3]-1:
-                if 0<=p[0]<self.shape[0] and 0<=p[1]<self.shape[1] and 0<=p[2]<self.shape[2]-1 and 0<=p[2]<self.shape[2]-1:
-                    for i in range(2):
-                        for j in range(2):
-                            #for k in range(2): # Lose the z fiddle... too confusing
-                                #points.append((p[0]+i,p[1]+j,p[2]+k))
-                                pts.append((p[0],p[1],p[2]+i,p[3]+j))
-        
         points = sorted(set(map(tuple,pts)))
         
         seedLil = operation.seedLil
