@@ -58,38 +58,23 @@ def generateMouseClickFunction(sws4d,plots,view):
             sws4d.tindex,sws4d.zindex,sws4d.yindex,sws4d.xindex = pos
         elif sws4d.mouseInteraction in ['doodle','line','plane']:
             print sws4d.mouseInteraction,position,pos
-            seedLil[pos[0]][pos[1]][pos[2],pos[3]] = sws4d.nextSeedValue
+            #seedLil[pos[0]][pos[1]][pos[2],pos[3]] = sws4d.nextSeedValue
             #sws4d.seedArr_t[pos[1],pos[2],pos[3]] = sws4d.nextSeedValue
             #sws4d.plots['XY'].mlab_source.scalars[pos[0],pos[1]] = sws4d.nextSeedValue
             
+            bresenhamPoints = [pos]
             if sws4d.lastPos!=None:
                 if sws4d.mouseInteraction == 'line':
-                    points = BresenhamFunction(pos,sws4d.lastPos)
+                    bresenhamPoints = [pos,sws4d.lastPos]
                 elif sws4d.mouseInteraction == 'plane':
-                    points = BresenhamTriangle(pos,sws4d.lastPos,sws4d.lastPos2)
+                    bresenhamPoints = [pos,sws4d.lastPos,sws4d.lastPos2]
                 else:
-                    points=[]
-                
-                EXPAND_POINTS=False
-                if EXPAND_POINTS:
-                    pointsExp = []
-                    for p in points:
-                        #if 0<=p[2]<sws4d.shape[1]-1 and 0<=p[0]<sws4d.shape[2]-1 and 0<=p[1]<sws4d.shape[3]-1:
-                        if 0<=p[0]<sws4d.shape[0] and 0<=p[1]<sws4d.shape[1] and 0<=p[2]<sws4d.shape[2]-1 and 0<=p[2]<sws4d.shape[2]-1:
-                            for i in range(2):
-                                for j in range(2):
-                                    #for k in range(2): # Lose the z fiddle... too confusing
-                                        #points.append((p[0]+i,p[1]+j,p[2]+k))
-                                        pointsExp.append((p[0],p[1],p[2]+i,p[3]+j))
-                else:
-                    pointsExp = totuple(points)
-                points = np.array(list(set(pointsExp)))
-                
-                #sws4d.seedArr[sws4d.tindex,points[:,2],points[:,0],points[:,1]] = sws4d.nextSeedValue
-                for p in points:
-                    seedLil[p[0]][p[1]][p[2],p[3]] = sws4d.nextSeedValue
-                    #if p[0]==sws4d.tindex:
-                    #    sws4d.seedArr_t[p[1],p[2],p[3]]=sws4d.nextSeedValue
+                    bresenhamPoints = [pos]
+            
+            op = SeedOperation(seedLil,bresenhamPoints,int(sws4d.nextSeedValue))
+            revOp = sws4d.DoSeedOperation(op)
+            sws4d.undoStack.append(revOp)
+            sws4d.redoStack = []
             
             if sws4d.mouseInteraction == 'line' and not np.sum(sws4d.lastPos!=pos)==0:
                 sws4d.lastPos = pos
@@ -102,7 +87,6 @@ def generateMouseClickFunction(sws4d,plots,view):
         if sws4d.mouseInteraction!='print':
             plots[view].mlab_source.scalars = plots[view].mlab_source.scalars
             #sws4d.update_seeds_overlay()
-            import time
             ti = time.time()
             #if sws4d.useSeedArr_t:#hasattr(sws4d,'switch'):
             #    print 'arr'
@@ -111,9 +95,20 @@ def generateMouseClickFunction(sws4d,plots,view):
             #else:
             #    print 'lil'
             sws4d.update_all_plots(seedLil[sws4d.tindex],sws4d.plots[1])
-            #    #sws4d.switch=None
-            print time.time()-ti
+            print 'Update Time',time.time()-ti
     return mouseClick
+
+class SeedOperation(object):
+    '''An object to store all the information needed for an operation
+       that changes seeds.
+       The operation must act on a point, line, or triangle region, but
+       can contain change the point data in any way.'''
+    bresenhamPoints = [] # 1, 2, or 3 integer points in 4D space (tzyx)
+    values = None     # a 1D numpy array or a single number
+    def __init__(self,seedLil,bresenhamPoints,values):
+       self.seedLil = seedLil
+       self.bresenhamPoints = bresenhamPoints
+       self.values = values
 
 class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     # store the full waterArr and seedArr as cooHD's (actually lil_matrix format) instead
@@ -136,6 +131,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     useTissueSeg = Bool(False)
     use2D = Bool(False)
     volumeRenderButton = Button('VolumeRender')
+    undoButton = Button('Undo')
+    redoButton = Button('Redo')
     saveButton = Button('Save')
     loadButton = Button('Load')
     
@@ -149,7 +146,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             ),
             Group('xindex','yindex','zindex','tindex','vmin','vmax','overlayOpacity','mouseInteraction',
              HGroup('watershedButton','nextSeedValue','useTissueSeg','use2D','volumeRenderButton'),#'updateSeedArr_tButton'),
-             HGroup('saveButton','loadButton','tempButton')
+             HGroup('undoButton','redoButton','saveButton','loadButton','tempButton')
             )
            ), resizable=True,title='SeedWaterSegmenter 4D')
     
@@ -162,6 +159,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         # This is NOT the same thing as the SWS3D woutline...
         self.ClearSeedsAndWatershed()
         self.ClearMask()
+        self.ClearUndoHistory()
         
         self.waterArr = np.zeros(self.shape,dtype=np.int32)
         #self.seedArr_t = np.zeros(self.shape[1:],dtype=np.int32)
@@ -172,6 +170,41 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             self.Load(loadfile)
         
         self.lastPos,self.lastPos2 = None,None
+    
+    def DoSeedOperation(self,operation):
+        '''Do a SeedOperation and return the reverse operation'''
+        nBPts = len(operation.bresenhamPoints)
+        pts = ( operation.bresenhamPoints                     if nBPts==1 else
+                BresenhamFunction(*operation.bresenhamPoints) if nBPts==2 else
+                BresenhamTriangle(*operation.bresenhamPoints) if nBPts==3 else
+                None )
+        assert pts!=None,'nPts is weird...'
+        
+        EXPAND_POINTS=False
+        if EXPAND_POINTS:
+            pts = []
+            for p in points:
+                #if 0<=p[2]<self.shape[1]-1 and 0<=p[0]<self.shape[2]-1 and 0<=p[1]<self.shape[3]-1:
+                if 0<=p[0]<self.shape[0] and 0<=p[1]<self.shape[1] and 0<=p[2]<self.shape[2]-1 and 0<=p[2]<self.shape[2]-1:
+                    for i in range(2):
+                        for j in range(2):
+                            #for k in range(2): # Lose the z fiddle... too confusing
+                                #points.append((p[0]+i,p[1]+j,p[2]+k))
+                                pts.append((p[0],p[1],p[2]+i,p[3]+j))
+        
+        points = sorted(set(map(tuple,pts)))
+        
+        seedLil = operation.seedLil
+        oldValues = [ seedLil[p[0]][p[1]][p[2],p[3]] for p in points ]
+        reverseOp = SeedOperation(operation.seedLil,operation.bresenhamPoints,oldValues)
+        values = ( operation.values
+                   if hasattr(operation.values,'__iter__') else
+                   [operation.values]*len(points) )
+        
+        for p,v in zip(points,values):
+            seedLil[p[0]][p[1]][p[2],p[3]] = v
+        
+        return reverseOp
     
     def ClearSeedsAndWatershed(self):
         '''Initialize seeds and watershed to empty lil_matrices'''
@@ -190,6 +223,10 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.maskLilDiff = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.uint16)
                               for j in range(self.shape[1]) ]
                             for i in range(self.shape[0]) ]
+    
+    def ClearUndoHistory(self):
+        self.undoStack = []
+        self.redoStack = []
     
     def SetMapPlotColormap(self,plots,clearBG=False):
         '''Secret sauce to display the map plot and make it look like SWS'''
@@ -462,6 +499,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.update_all_plots_cb()
         if self.nextSeedValue>2:
             self.nextSeedValue=2
+        self.ClearUndoHistory()
     
     def Save(self,filename=None):
         print 'Save'
@@ -527,6 +565,29 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             return
         
         self.updateWaterArr()
+    
+    @on_trait_change('undoButton')
+    def OnUndo(self):
+        if self.undoStack:
+            op = self.undoStack.pop()
+            revOp = self.DoSeedOperation(op)
+            self.redoStack.append(revOp)
+            self.lastPos,self.lastPos2 = None,None
+            ti = time.time()
+            self.update_all_plots(op.seedLil[self.tindex],self.plots[1])
+            print 'Update Time',time.time()-ti
+    
+    @on_trait_change('redoButton')
+    def OnRedo(self):
+        if self.redoStack:
+            op = self.redoStack.pop()
+            revOp = self.DoSeedOperation(op)
+            self.undoStack.append(revOp)
+            self.lastPos,self.lastPos2 = None,None
+            ti = time.time()
+            self.update_all_plots(op.seedLil[self.tindex],self.plots[1])
+            print 'Update Time',time.time()-ti
+    
     @on_trait_change('saveButton')
     def OnSave(self):
         self.Save()
@@ -535,6 +596,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     def OnLoad(self):
         self.Load()
         self.update_all_plots_cb()
+        self.ClearUndoHistory()
     
     def GetSubArrayExtent(self,val):
         wh = np.where(self.waterArr==val)
