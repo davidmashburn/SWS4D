@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import os,glob
+import time
 import numpy as np
 import scipy.ndimage
 import scipy.sparse
@@ -89,8 +90,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         if loadfile!=None:
             self.Load(loadfile)
         
-        self.lastPos=None
-        self.lastPos2=None
+        self.lastPos,self.lastPos2 = None,None
+    
     def ClearSeedsAndWatershed(self):
         '''Initialize seeds and watershed to empty lil_matrices'''
         self.seedLil = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.uint16)
@@ -99,6 +100,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.waterLilDiff = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.int32) # This needs to be able to go negative...
                                for j in range(self.shape[1]) ]
                              for i in range(self.shape[0]) ]
+    
     def ClearMask(self):
         '''Initialize mask seeds and watershed to empty lil_matrices'''
         self.maskSeedLil = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.uint16)
@@ -107,6 +109,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.maskLilDiff = [ [ scipy.sparse.lil_matrix(self.shape[2:],dtype=np.uint16)
                               for j in range(self.shape[1]) ]
                             for i in range(self.shape[0]) ]
+    
     def SetMapPlotColormap(self,plots,clearBG=False):
         '''Secret sauce to display the map plot and make it look like SWS'''
         from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
@@ -119,8 +122,9 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             plots[i].module_manager.scalar_lut_manager.lut.table = mapPlotCmap.T
             plots[i].ipw.reslice_interpolate = 'nearest'
             plots[i].parent.scalar_lut_manager.data_range = 0,10000
+    
     def AddMouseInteraction(self,plots):
-        # the heart of the mouse interactions
+        '''Bind the mouse interactions'''
         for view in ['XY','XZ','YZ']:
             def genMC(view):
                 def mouseClick(obj, evt):
@@ -242,7 +246,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             if self.useTissueSeg:
                 print 'Whole Tissue',
             print 'Watershed on frame',t
-        self.lastPos=None
+        self.lastPos,self.lastPos2 = None,None
+    
     @on_trait_change('scene.activated')
     def display_scene(self):
         self.display_scene_helper(self.arr,self.scene,self.plots[0],self.cursors[0])
@@ -260,6 +265,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             self.contours[i].enable_contours=True
             self.contours[i].contour.auto_contours=False
             self.contours[i].contour.contours=[0.5]
+    
     @on_trait_change('sceneWater.activated')
     def display_sceneWater(self):
         self.display_scene_helper(self.arr,self.sceneWater,self.plots[2],self.cursors[1],zeroFill=True)
@@ -268,6 +274,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                 plots[s].mlab_source.scalars = np.array(plots[s].mlab_source.scalars)
         self.SetMapPlotColormap(self.plots[2])
         self.AddMouseInteraction(self.plots[2])
+    
     def update_x_plots(self,arr_t,plots):
         if plots is not {}:
             if arr_t.__class__==np.ndarray:
@@ -288,14 +295,17 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                 plots['XY'].mlab_source.scalars = arr_t[self.zindex]
             elif arr_t.__class__== list:
                 plots['XY'].mlab_source.scalars = arr_t[self.zindex].toarray().astype(np.int32)
+    
     #def getWaterArr_t_z(self):
     #    # This should be the inner function in updateWaterArr_t
     #    waterLilDiff = (self.waterLilDiff if not self.useTissueSeg else self.maskLilDiff)
     #    return coo_utils.CooDiffToArray( waterLilDiff[self.tindex][self.zindex] )
+    
     def updateWaterArr(self):
         waterLilDiff = (self.waterLilDiff if not self.useTissueSeg else self.maskLilDiff)
         for t in range(self.shape[0]):
             self.waterArr[t] = coo_utils.CooDiffToArray( waterLilDiff[t] )
+    
     #def updateSeedArr_t(self,tindex=None):
     def getSeedArr_t(self,tindex=None):
         if tindex==None:
@@ -303,21 +313,25 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         seedLil = (self.seedLil if not self.useTissueSeg else self.maskSeedLil)
         return coo_utils.CooHDToArray( seedLil[tindex], dtype=np.int32)
         #self.useSeedArr_t = True
+    
     def updateWaterLilDiff(self,tindex=None):
         if tindex==None:
             tindex=self.tindex
         waterLilDiff = (self.waterLilDiff if not self.useTissueSeg else self.maskLilDiff)
         waterLilDiff[tindex] = coo_utils.ArrayToCooDiff( self.waterArr[tindex] )
+    
     #def update_seeds_overlay(self):
     #    import time
     #    t=time.time()
     #    self.updateSeedArr_t()
     #    self.update_all_plots(self.seedArr_t,self.plots[1])
+    
     #@on_trait_change('updateSeedArr_tButton')
     #def updateSeedArr_tCallback(self,tindex=None):
     #    self.update_seeds_overlay()
     #    self.updateWaterArr_t()
     #    self.update_all_plots(self.waterArr_t,self.plots[2])
+    
     @on_trait_change('overlayOpacity')
     def overlayOpacityCallback(self):
         for s in ['XY','XZ','YZ']:
@@ -326,6 +340,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         for i in ['x','y','zx','zy']:
             self.cursors[0][i].actor.visible = (self.overlayOpacity>0)
             self.cursors[1][i].actor.visible = (self.overlayOpacity>0)
+    
     @on_trait_change('watershedButton')
     def watershedButtonCallback(self):
         self.RunWatershed(index = self.tindex,use2D = self.use2D)
@@ -334,6 +349,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.update_all_plots(seedLil[self.tindex],self.plots[1])
         self.update_all_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_all_contours()
+    
     @on_trait_change('nextSeedValue')
     def nextSeedValue_cb(self):
         '''Three actions:
@@ -343,29 +359,36 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         # adding functionality to reset to 0,1, or 2 if in tissue mode
         if self.useTissueSeg and self.nextSeedValue>2:
             self.nextSeedValue = 2
-        self.lastPos = None
+        self.lastPos,self.lastPos2 = None,None
         self.update_all_contours()
+    
     @on_trait_change('mouseInteraction')
     def mouseInteractionChanged(self):
-        self.lastPos=None
+        self.lastPos,self.lastPos2 = None,None
+    
     def contourHelper(self,arr,xyzStr):
         self.contours[xyzStr].mlab_source.scalars = arr.astype(np.int32)
         self.contours[xyzStr].enable_contours=True
         self.contours[xyzStr].contour.auto_contours=False
         self.contours[xyzStr].contour.contours=[0.5]
+    
     def update_x_contours(self):
         arr = (self.waterArr[self.tindex,:,:,self.xindex].T==self.nextSeedValue)
         self.contourHelper(arr,'YZ')
+    
     def update_y_contours(self):
         arr = (self.waterArr[self.tindex,:,self.yindex]==self.nextSeedValue)
         self.contourHelper(arr,'XZ')
+    
     def update_z_contours(self):
         arr = (self.waterArr[self.tindex,self.zindex]==self.nextSeedValue)
         self.contourHelper(arr,'XY')
+    
     def update_all_contours(self):
         self.update_x_contours()
         self.update_y_contours()
         self.update_z_contours()
+    
     @on_trait_change('xindex')
     def update_x_plots_cb(self):
         self.update_x_plots(self.arr[self.tindex],self.plots[0])
@@ -377,6 +400,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.update_x_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_x_cursors()
         self.update_x_contours()
+    
     @on_trait_change('yindex')
     def update_y_plots_cb(self):
         self.update_y_plots(self.arr[self.tindex],self.plots[0])
@@ -388,6 +412,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.update_y_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_y_cursors()
         self.update_y_contours()
+    
     @on_trait_change('zindex')
     def update_z_plots_cb(self):
         self.update_z_plots(self.arr[self.tindex],self.plots[0])
@@ -404,6 +429,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         self.update_z_plots(self.waterArr[self.tindex],self.plots[2])
         self.update_z_cursors()
         self.update_z_contours()
+    
     @on_trait_change('tindex')
     def update_all_plots_cb(self):
         self.update_all_plots(self.arr[self.tindex],self.plots[0])
@@ -444,6 +470,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             coo_utils.SaveCooHDToRCDFile(self.seedLil,self.shape,filename+'_seeds',fromlil=True)
             coo_utils.SaveCooHDToRCDFile(self.maskLilDiff,self.shape,filename+'_maskDiff',fromlil=True)
             coo_utils.SaveCooHDToRCDFile(self.maskSeedLil,self.shape,filename+'_maskSeeds',fromlil=True)
+    
     def Load(self,filename=None,sLwLD=None,sLwLD_mask=None):
         print 'Load'
         sh = self.shape
@@ -501,16 +528,19 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     @on_trait_change('saveButton')
     def OnSave(self):
         self.Save()
+    
     @on_trait_change('loadButton')
     def OnLoad(self):
         self.Load()
         self.update_all_plots_cb()
+    
     def GetSubArrayExtent(self,val):
         wh = np.where(self.waterArr==val)
         zmin,zmax = min(wh[1]),max(wh[1])
         ymin,ymax = min(wh[2]),max(wh[2])
         xmin,xmax = min(wh[3]),max(wh[3])
         return (zmin,zmax),(ymin,ymax),(xmin,xmax)
+    
     def GetSubArray(self,val):
         (zmin,zmax),(ymin,ymax),(xmin,xmax) = self.GetSubArrayExtent(val)
         return (self.waterArr[:,zmin:zmax+1,ymin:ymax+1,xmin:xmax+1]==val).astype(np.int32)
