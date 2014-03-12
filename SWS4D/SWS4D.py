@@ -325,7 +325,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     #def getWaterArr_t_z(self):
     #    # This should be the inner function in updateWaterArr_t
     #    waterLilDiff = (self.waterLilDiff if not self.useTissueSeg else self.maskLilDiff)
-    #    return coo_utils.CooDiffToArray( waterLilDiff[self.tindex][self.zindex] )
+    #    return coo_utils.CooDiffToArray( self.waterLilDiff[self.tindex][self.zindex] )
     
     def updateWaterArr(self):
         waterLilDiff = (self.waterLilDiff if not self.useTissueSeg else self.maskLilDiff)
@@ -369,7 +369,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     
     @on_trait_change('watershedButton')
     def watershedButtonCallback(self):
-        self.RunWatershed(index = self.tindex,use2D = self.use2D)
+        self.RunWatershed(index=self.tindex, use2D=self.use2D)
         # waterArr_t and seedArr_t are updated in RunWatershed
         seedLil = (self.seedLil if not self.useTissueSeg else self.maskSeedLil)
         self.update_all_plots(seedLil[self.tindex],self.plots[1])
