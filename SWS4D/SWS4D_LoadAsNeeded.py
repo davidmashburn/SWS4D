@@ -272,7 +272,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
             self.waterArr_t[:] = mahotas.cwatershed( arr,seedArr_t,Bc )
             
             self.updateWaterLilDiff(t)
-            if self.use2D:
+            if use2D:
                 print 'Using 2D Watershed... warning! This can lead to uninitialized values if there are no seeds on a frame',
             if self.useTissueSeg:
                 print 'Whole Tissue',
