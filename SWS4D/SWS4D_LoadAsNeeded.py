@@ -257,7 +257,7 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
         for t in tList:
             #self.updateSeedArr_t(t)
             seedArr_t = self.getSeedArr_t(t)
-            arr = self.arr[t]
+            arr = self.arr
             for z in range(self.shape[1]):
                 # if there is any masking for this stack, then use it
                 # (and otherwise skip it...)
