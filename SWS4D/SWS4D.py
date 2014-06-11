@@ -22,6 +22,8 @@ import mahotas
 from np_utils import BresenhamFunction,BresenhamTriangle,totuple,circs,shprs
 import coo_utils
 
+from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
+
 from mlabArrayViewer import ArrayViewVolume,ArrayView4D,ArrayView4DVminVmax,ArrayView4DDual
 from SWS4D_utils import GetFileBasenameForSaveLoad,LoadMostRecentSegmentation
 
@@ -217,7 +219,6 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     
     def SetMapPlotColormap(self,plots,clearBG=False):
         '''Secret sauce to display the map plot and make it look like SWS'''
-        from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
         mapPlotCmap = np.zeros([4,10000],np.int)
         mapPlotCmap[:3] = GetMapPlotRandomArray()
         mapPlotCmap[3] = 255
