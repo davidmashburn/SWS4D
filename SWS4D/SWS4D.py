@@ -27,7 +27,7 @@ from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
 from mlabArrayViewer import ArrayViewVolume,ArrayView4D,ArrayView4DVminVmax,ArrayView4DDual
 from SWS4D_utils import GetFileBasenameForSaveLoad,LoadMostRecentSegmentation
 
-mouseInteractionModes = ['print','doodle','erase','line','plane','move']
+mouseInteractionModes = ['print','doodle','line','plane','move']
 
 # Cross elements define the connectivity with which watersheds "flow"
 # These are the defaults in 2D and 3D respectively:
@@ -82,9 +82,6 @@ def generateMouseClickFunction(sws4d,plots,view):
                 sws4d.lastPos = pos
             elif sws4d.mouseInteraction == 'plane' and not np.sum(sws4d.lastPos!=pos)==0:
                 sws4d.lastPos, sws4d.lastPos2 = pos, sws4d.lastPos
-        
-        elif sws4d.mouseInteraction=='erase': # erase mode
-            print 'Erase',position
         
         if sws4d.mouseInteraction!='print':
             plots[view].mlab_source.scalars = plots[view].mlab_source.scalars

@@ -24,7 +24,7 @@ import coo_utils
 from mlabArrayViewer import ArrayViewVolume,ArrayView4D,ArrayView4DVminVmax,ArrayView4DDual
 from SWS4D_utils import GetFileBasenameForSaveLoad,LoadMostRecentSegmentation
 
-mouseInteractionModes = ['print','doodle','erase','line','plane','move']
+mouseInteractionModes = ['print','doodle','line','plane','move']
 
 class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     '''This is the original version of SWS4D ... it does not support save or load because they would be far too disk-intensive!!!'''
@@ -122,8 +122,6 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
                         elif self.mouseInteraction == 'plane' and not np.sum(self.lastPos!=pos)==0:
                             self.lastPos, self.lastPos2 = pos, self.lastPos
                     
-                    elif self.mouseInteraction=='erase': # erase mode
-                        print 'Erase',position
                     self.update_all_plots_cb()
                     
                     if self.mouseInteraction!='print':
