@@ -488,8 +488,8 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     
     def Save(self,filename=None):
         print 'Save'
-        filename = GetFileBasenameForSaveLoad(filename,saveDialog=True) # Overwrite protection ONLY IF FILENAME IS NONE!
-        if filename!=None:
+        filename = GetFileBasenameForSaveLoad(filename,saveDialog=True) # Overwrite protection ONLY IF FILENAME IS NONE OR ''!
+        if filename:
             print 'Saving'
             coo_utils.SaveCooHDToRCDFile(self.waterLilDiff,self.shape,filename+'_waterDiff',fromlil=True)
             coo_utils.SaveCooHDToRCDFile(self.seedLil,self.shape,filename+'_seeds',fromlil=True)
