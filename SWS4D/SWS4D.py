@@ -19,7 +19,7 @@ import mahotas
 
 #import np_utils
 #reload(np_utils)
-from np_utils import BresenhamFunction,BresenhamTriangle,totuple,circs,shprs
+from np_utils import BresenhamFunction,BresenhamTriangle,NDRectangle,totuple,circs,shprs
 import coo_utils
 
 from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
@@ -27,7 +27,7 @@ from SeedWaterSegmenter.SeedWaterSegmenter import GetMapPlotRandomArray
 from mlabArrayViewer import ArrayViewVolume,ArrayView4D,ArrayView4DVminVmax,ArrayView4DDual
 from SWS4D_utils import GetFileBasenameForSaveLoad,LoadMostRecentSegmentation
 
-mouseInteractionModes = ['print','doodle','line','plane','move']
+mouseInteractionModes = ['print','doodle','line','plane','cube','move']
 
 # Cross elements define the connectivity with which watersheds "flow"
 # These are the defaults in 2D and 3D respectively:
@@ -58,7 +58,7 @@ def generateMouseClickFunction(sws4d,plots,view):
         elif sws4d.mouseInteraction=='move':
             print sws4d.mouseInteraction,position,pos
             sws4d.tindex,sws4d.zindex,sws4d.yindex,sws4d.xindex = pos
-        elif sws4d.mouseInteraction in ['doodle','line','plane']:
+        elif sws4d.mouseInteraction in ['doodle','line','plane','cube']:
             print sws4d.mouseInteraction,position,pos
             #seedLil[pos[0]][pos[1]][pos[2],pos[3]] = sws4d.nextSeedValue
             #sws4d.seedArr_t[pos[1],pos[2],pos[3]] = sws4d.nextSeedValue
@@ -66,19 +66,20 @@ def generateMouseClickFunction(sws4d,plots,view):
             
             bresenhamPoints = [pos]
             if sws4d.lastPos!=None:
-                if sws4d.mouseInteraction == 'line':
+                if sws4d.mouseInteraction in ['line','cube']:
                     bresenhamPoints = [pos,sws4d.lastPos]
                 elif sws4d.mouseInteraction == 'plane':
                     bresenhamPoints = [pos,sws4d.lastPos,sws4d.lastPos2]
                 else:
                     bresenhamPoints = [pos]
             
-            op = SeedOperation(seedLil,bresenhamPoints,int(sws4d.nextSeedValue))
+            isCube = sws4d.mouseInteraction=='cube'
+            op = SeedOperation(seedLil,bresenhamPoints,int(sws4d.nextSeedValue),isCube)
             revOp = sws4d.DoSeedOperation(op)
             sws4d.undoStack.append(revOp)
             sws4d.redoStack = []
             
-            if sws4d.mouseInteraction == 'line' and not np.sum(sws4d.lastPos!=pos)==0:
+            if sws4d.mouseInteraction in ['line','cube'] and not np.sum(sws4d.lastPos!=pos)==0:
                 sws4d.lastPos = pos
             elif sws4d.mouseInteraction == 'plane' and not np.sum(sws4d.lastPos!=pos)==0:
                 sws4d.lastPos, sws4d.lastPos2 = pos, sws4d.lastPos
@@ -104,10 +105,11 @@ class SeedOperation(object):
        can contain change the point data in any way.'''
     bresenhamPoints = [] # 1, 2, or 3 integer points in 4D space (tzyx)
     values = None     # a 1D numpy array or a single number
-    def __init__(self,seedLil,bresenhamPoints,values):
+    def __init__(self,seedLil,bresenhamPoints,values,isCube=False):
        self.seedLil = seedLil
        self.bresenhamPoints = bresenhamPoints
        self.values = values
+       self.isCube=isCube
 
 class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     # store the full waterArr and seedArr as cooHD's (actually lil_matrix format) instead
@@ -173,16 +175,21 @@ class SeedWaterSegmenter4D(ArrayView4DVminVmax):
     def DoSeedOperation(self,operation):
         '''Do a SeedOperation and return the reverse operation'''
         nBPts = len(operation.bresenhamPoints)
-        pts = ( operation.bresenhamPoints                     if nBPts==1 else
-                BresenhamFunction(*operation.bresenhamPoints) if nBPts==2 else
-                BresenhamTriangle(*operation.bresenhamPoints) if nBPts==3 else
-                None )
+        if operation.isCube:
+            pts = ( operation.bresenhamPoints if nBPts==1 else
+                    NDRectangle(*operation.bresenhamPoints) )
+        else:
+            pts = ( operation.bresenhamPoints                     if nBPts==1 else
+                    BresenhamFunction(*operation.bresenhamPoints) if nBPts==2 else
+                    BresenhamTriangle(*operation.bresenhamPoints) if nBPts==3 else
+                    None )
         assert pts!=None,'nPts is weird...'
         points = sorted(set(map(tuple,pts)))
         
         seedLil = operation.seedLil
         oldValues = [ seedLil[p[0]][p[1]][p[2],p[3]] for p in points ]
-        reverseOp = SeedOperation(operation.seedLil,operation.bresenhamPoints,oldValues)
+        reverseOp = SeedOperation(operation.seedLil,operation.bresenhamPoints,
+                                  oldValues,operation.isCube)
         values = ( operation.values
                    if hasattr(operation.values,'__iter__') else
                    [operation.values]*len(points) )
