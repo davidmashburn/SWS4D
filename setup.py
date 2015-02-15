@@ -25,8 +25,8 @@ setup(
                       'mayavi>=4.0',
                       'mahotas>=0.5'
                       'FilenameSort>=0.1',
-                      'GifTiffLoader>=0.1',
-                      'np_utils>=0.1',
+                      'GifTiffLoader>=0.1.6',
+                      'np_utils>=0.3.3',
                       'coo_utils>=0.1',
                      ],
 )
